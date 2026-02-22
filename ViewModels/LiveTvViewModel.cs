@@ -172,7 +172,11 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
 
     partial void OnSelectedScopeChanged(ProviderScope? value) => BuildCategories();
 
-    partial void OnSelectedCategoryChanged(string? value) => BuildChannels();
+    partial void OnSelectedCategoryChanged(string? value)
+    {
+        BuildChannels();
+        _ = PopulateNowNextForChannelsAsync();
+    }
 
     partial void OnSelectedChannelChanged(LiveChannelItemVm? value) => _ = OnSelectedChannelChangedAsync(value);
 
@@ -243,6 +247,45 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
         SelectedChannel = Channels.FirstOrDefault();
     }
 
+    /// <summary>
+    /// Listedeki her kanal için EPG Now/Next bilgisini doldurur.
+    /// </summary>
+    private async Task PopulateNowNextForChannelsAsync()
+    {
+        if (Channels.Count == 0) return;
+
+        var nowUtc = DateTimeOffset.UtcNow;
+
+        // İlgili provider'lar için EPG snapshot'larını cache'e alın
+        foreach (var chVm in Channels)
+        {
+            var providerId = chVm.Channel.ProviderId;
+            if (string.IsNullOrWhiteSpace(providerId)) continue;
+
+            if (!_epgCache.TryGetValue(providerId, out var snap))
+            {
+                snap = await _epgRepo.LoadAsync(providerId);
+                _epgCache[providerId] = snap;
+            }
+        }
+
+        // Şimdi her kanal için Now/Next hesapla
+        foreach (var chVm in Channels)
+        {
+            var providerId = chVm.Channel.ProviderId;
+            if (string.IsNullOrWhiteSpace(providerId) ||
+                !_epgCache.TryGetValue(providerId, out var snap) ||
+                snap is null)
+            {
+                chVm.UpdateNowNext(null, null);
+                continue;
+            }
+
+            var (now, next) = _epg.GetNowNext(snap, chVm.Channel, nowUtc);
+            chVm.UpdateNowNext(now, next);
+        }
+    }
+
     private async Task LoadTimelineForSelectedChannelAsync()
     {
         Timeline.Clear();
@@ -277,7 +320,7 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
                 pastWindow: TimeSpan.FromHours(2),
                 futureWindow: TimeSpan.FromHours(6));
 
-            // 🔧 BURADA TEKRARLARI TEMİZLİYORUZ
+            // 🔧 Timeline-level dedup
             var items = DeduplicateTimelineItems(rawItems);
 
             if (items.Count == 0)

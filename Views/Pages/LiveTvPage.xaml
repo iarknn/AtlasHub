@@ -125,8 +125,27 @@
                                     </Border>
 
                                     <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
-                                        <TextBlock Text="{Binding Name}" Foreground="{StaticResource BrushFg1}" FontWeight="SemiBold"/>
-                                        <TextBlock Text="{Binding Group}" Foreground="{StaticResource BrushFg2}" FontSize="12" Margin="0,2,0,0"/>
+                                        <TextBlock Text="{Binding Name}"
+                                                   Foreground="{StaticResource BrushFg1}"
+                                                   FontWeight="SemiBold"/>
+                                        <TextBlock Text="{Binding Group}"
+                                                   Foreground="{StaticResource BrushFg2}"
+                                                   FontSize="12"
+                                                   Margin="0,2,0,0"/>
+
+                                        <!-- NOW -->
+                                        <TextBlock Text="{Binding NowTitle}"
+                                                   Foreground="{StaticResource BrushFg1}"
+                                                   FontSize="11"
+                                                   Margin="0,4,0,0"
+                                                   TextTrimming="CharacterEllipsis"/>
+
+                                        <!-- NEXT -->
+                                        <TextBlock Text="{Binding NextTitle, StringFormat='Sonra: {0}'}"
+                                                   Foreground="{StaticResource BrushFg2}"
+                                                   FontSize="10"
+                                                   Margin="0,2,0,0"
+                                                   TextTrimming="CharacterEllipsis"/>
                                     </StackPanel>
                                 </Grid>
                             </DataTemplate>
@@ -188,14 +207,12 @@
                                        FontSize="12"
                                        Margin="0,4,0,0"/>
 
-                            <!-- ✅ FIX: Mode=OneWay + min/max -->
                             <ProgressBar Height="6"
                                          Margin="0,8,0,0"
                                          Minimum="0"
                                          Maximum="100"
                                          Value="{Binding SelectedProgramProgress, Mode=OneWay, FallbackValue=0}"/>
 
-                            <!-- ✅ FIX: VM ile isim uyumu -->
                             <TextBlock Text="{Binding SelectedProgramRemainingText, Mode=OneWay}"
                                        Foreground="{StaticResource BrushFg2}"
                                        FontSize="12"
@@ -317,7 +334,6 @@
                                                                    Margin="0,4,0,0"/>
 
                                                         <Grid Grid.Row="2" Margin="0,6,0,0" VerticalAlignment="Bottom">
-                                                            <!-- ✅ FIX: Mode=OneWay + min/max -->
                                                             <ProgressBar Height="4"
                                                                          Minimum="0"
                                                                          Maximum="100"
