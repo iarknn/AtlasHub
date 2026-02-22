@@ -1,5 +1,6 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+﻿using System;
 using AtlasHub.Models;
+using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace AtlasHub.ViewModels;
 
@@ -15,8 +16,8 @@ public partial class EpgTimelineItemVm : ObservableObject
 
     public string TimeRangeText => $"{StartLocal:HH:mm} — {EndLocal:HH:mm}";
 
-    public bool IsNow(DateTimeOffset nowLocal)
-        => nowLocal >= StartLocal && nowLocal < EndLocal;
+    // ✅ RENAMED: method adı property ile çakışmasın
+    public bool IsNowAt(DateTimeOffset nowLocal) => nowLocal >= StartLocal && nowLocal < EndLocal;
 
     public double GetProgressPercent(DateTimeOffset nowLocal)
     {
