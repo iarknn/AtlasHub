@@ -1,0 +1,119 @@
+﻿<UserControl x:Class="AtlasHub.Views.Pages.ProvidersPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="440"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- Left -->
+        <Border Style="{StaticResource Card}" Padding="16" Margin="0,0,16,0">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Top">
+                    <TextBlock Text="{DynamicResource sources.title}" FontSize="26" FontWeight="SemiBold"/>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                        <Button Content="{DynamicResource sources.reload}"
+                                Command="{Binding ReloadCommand}"
+                                IsEnabled="{Binding IsNotBusy}"
+                                Margin="0,0,10,0"/>
+                        <Button Content="{DynamicResource sources.refresh}"
+                                Command="{Binding RefreshCatalogCommand}"
+                                IsEnabled="{Binding IsNotBusy}"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <ListBox ItemsSource="{Binding Providers}"
+                         SelectedItem="{Binding Selected}"
+                         Margin="0,14,0,0">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel>
+                                <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="SemiBold"/>
+                                <TextBlock Text="{Binding Type}" Foreground="{StaticResource BrushFg1}" FontSize="12"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <StackPanel DockPanel.Dock="Bottom" Margin="0,12,0,0">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button Content="{DynamicResource sources.toggle}"
+                                Command="{Binding ToggleEnabledCommand}"
+                                IsEnabled="{Binding IsNotBusy}"
+                                Margin="0,0,10,0"/>
+                        <Button Content="{DynamicResource sources.delete}"
+                                Command="{Binding DeleteSelectedCommand}"
+                                IsEnabled="{Binding IsNotBusy}"/>
+                    </StackPanel>
+
+                    <CheckBox Content="{DynamicResource sources.enabled}"
+                              IsChecked="{Binding IsEnabledForProfile}"
+                              IsEnabled="False"
+                              Margin="0,10,0,0"/>
+
+                    <TextBlock Text="{Binding Status}"
+                               Foreground="{StaticResource BrushFg1}"
+                               Margin="0,10,0,0"
+                               TextWrapping="Wrap"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- Right -->
+        <Border Grid.Column="1" Style="{StaticResource Card}" Padding="16">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <TextBlock Text="{DynamicResource sources.add}" FontSize="18" FontWeight="SemiBold"/>
+
+                    <TextBlock Text="{DynamicResource sources.name}"
+                               Margin="0,14,0,6"
+                               Foreground="{StaticResource BrushFg1}"/>
+                    <TextBox Text="{Binding NewName, UpdateSourceTrigger=PropertyChanged}"/>
+
+                    <TextBlock Text="{DynamicResource sources.m3u.url}"
+                               Margin="0,14,0,6"
+                               Foreground="{StaticResource BrushFg1}"/>
+                    <TextBox Text="{Binding M3uUrl, UpdateSourceTrigger=PropertyChanged}"/>
+
+                    <TextBlock Text="{DynamicResource sources.xmltv.url}"
+                               Margin="0,14,0,6"
+                               Foreground="{StaticResource BrushFg1}"/>
+                    <TextBox Text="{Binding XmltvUrl, UpdateSourceTrigger=PropertyChanged}"/>
+
+                    <Button Content="{DynamicResource sources.xmltv.save}"
+                            Command="{Binding SaveXmltvCommand}"
+                            IsEnabled="{Binding IsNotBusy}"
+                            Margin="0,10,0,0"/>
+
+                    <TextBlock Text="{DynamicResource sources.http.useragent}"
+                               Margin="0,14,0,6"
+                               Foreground="{StaticResource BrushFg1}"/>
+                    <TextBox Text="{Binding UserAgent, UpdateSourceTrigger=PropertyChanged}"/>
+
+                    <TextBlock Text="{DynamicResource sources.http.referer}"
+                               Margin="0,14,0,6"
+                               Foreground="{StaticResource BrushFg1}"/>
+                    <TextBox Text="{Binding Referer, UpdateSourceTrigger=PropertyChanged}"/>
+
+                    <TextBlock Text="{DynamicResource sources.http.timeout}"
+                               Margin="0,14,0,6"
+                               Foreground="{StaticResource BrushFg1}"/>
+                    <TextBox Text="{Binding TimeoutSeconds, UpdateSourceTrigger=PropertyChanged}"/>
+
+                    <CheckBox Content="{DynamicResource sources.enableForProfile}"
+                              IsChecked="{Binding EnableForProfile}"
+                              Margin="0,14,0,0"/>
+
+                    <Button Content="{DynamicResource sources.save}"
+                            Margin="0,16,0,0"
+                            Command="{Binding AddM3uCommand}"
+                            IsEnabled="{Binding IsNotBusy}"
+                            Style="{StaticResource AccentButton}"/>
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+    </Grid>
+</UserControl>

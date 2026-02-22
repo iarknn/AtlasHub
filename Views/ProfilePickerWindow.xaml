@@ -1,0 +1,117 @@
+﻿<Window x:Class="AtlasHub.Views.ProfilePickerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="{DynamicResource app.title}"
+        Width="980" Height="620"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="NoResize">
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel>
+            <TextBlock Text="{DynamicResource profile.whosWatching}"
+                       FontSize="34"
+                       FontWeight="SemiBold"/>
+            <TextBlock Text="{DynamicResource profile.selectToContinue}"
+                       Margin="0,6,0,0"
+                       Foreground="{StaticResource BrushFg1}"
+                       FontSize="14"/>
+        </StackPanel>
+
+        <Grid Grid.Row="1" Margin="0,20,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="360"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Profiles list -->
+            <Border Background="{StaticResource BrushBg1}"
+                    CornerRadius="{StaticResource Cr16}"
+                    Padding="16"
+                    Margin="0,0,16,0">
+                <DockPanel>
+                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="{DynamicResource profile.profiles}" FontSize="16" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding Profiles.Count, StringFormat=  ({0})}"
+                                   Margin="8,2,0,0"
+                                   Foreground="{StaticResource BrushFg1}"/>
+                    </StackPanel>
+
+                    <ListBox ItemsSource="{Binding Profiles}"
+                             SelectedItem="{Binding SelectedProfile}"
+                             Margin="0,12,0,0">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="48"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <Border Width="40" Height="40" CornerRadius="20"
+                                            Background="{StaticResource BrushAccent}"
+                                            VerticalAlignment="Center"/>
+
+                                    <StackPanel Grid.Column="1">
+                                        <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="SemiBold"/>
+                                        <TextBlock Text="{Binding CreatedUtc}"
+                                                   FontSize="11"
+                                                   Foreground="{StaticResource BrushFg1}"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                    </StackPanel>
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <StackPanel DockPanel.Dock="Bottom"
+                                Orientation="Horizontal"
+                                HorizontalAlignment="Right"
+                                Margin="0,12,0,0">
+                        <Button Content="{DynamicResource profile.delete}"
+                                Command="{Binding DeleteSelectedCommand}"
+                                Margin="0,0,10,0"/>
+                        <Button Content="{DynamicResource profile.continue}"
+                                Command="{Binding ContinueCommand}"
+                                Style="{StaticResource AccentButton}"/>
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+
+            <!-- Create profile -->
+            <Border Grid.Column="1"
+                    Background="{StaticResource BrushBg1}"
+                    CornerRadius="{StaticResource Cr16}"
+                    Padding="16">
+                <StackPanel>
+                    <TextBlock Text="{DynamicResource profile.create}" FontSize="16" FontWeight="SemiBold"/>
+
+                    <TextBlock Text="{DynamicResource profile.name}"
+                               Margin="0,14,0,6"
+                               Foreground="{StaticResource BrushFg1}"/>
+                    <TextBox Text="{Binding NewProfileName, UpdateSourceTrigger=PropertyChanged}"/>
+
+                    <TextBlock Text="{DynamicResource profile.avatar}"
+                               Margin="0,14,0,6"
+                               Foreground="{StaticResource BrushFg1}"/>
+
+                    <ComboBox SelectedValue="{Binding SelectedAvatarKey}" SelectedValuePath="Tag" Height="36">
+                        <ComboBoxItem Content="{DynamicResource profile.avatar.red}" Tag="red" IsSelected="True"/>
+                        <ComboBoxItem Content="{DynamicResource profile.avatar.blue}" Tag="blue"/>
+                        <ComboBoxItem Content="{DynamicResource profile.avatar.green}" Tag="green"/>
+                        <ComboBoxItem Content="{DynamicResource profile.avatar.purple}" Tag="purple"/>
+                    </ComboBox>
+
+                    <Button Content="{DynamicResource profile.add}"
+                            Margin="0,16,0,0"
+                            Command="{Binding CreateProfileCommand}"
+                            Style="{StaticResource AccentButton}"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

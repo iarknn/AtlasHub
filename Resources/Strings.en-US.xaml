@@ -1,0 +1,70 @@
+﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=System.Runtime">
+
+    <sys:String x:Key="app.title">Atlas Hub</sys:String>
+
+    <sys:String x:Key="sidebar.sprint1">Sprint 1</sys:String>
+    <sys:String x:Key="sidebar.management">Management</sys:String>
+    <sys:String x:Key="footer.status">Status</sys:String>
+    <sys:String x:Key="footer.sprint1desc">Sprint 1: Live TV + Sources</sys:String>
+
+    <sys:String x:Key="nav.live">Live TV</sys:String>
+    <sys:String x:Key="nav.movies">Movies</sys:String>
+    <sys:String x:Key="nav.series">Series</sys:String>
+    <sys:String x:Key="nav.sources">Sources</sys:String>
+    <sys:String x:Key="nav.settings">Settings</sys:String>
+
+    <sys:String x:Key="profile.whosWatching">Who's watching?</sys:String>
+    <sys:String x:Key="profile.selectToContinue">Select a profile to continue</sys:String>
+    <sys:String x:Key="profile.profiles">Profiles</sys:String>
+    <sys:String x:Key="profile.create">Create Profile</sys:String>
+    <sys:String x:Key="profile.name">Name</sys:String>
+    <sys:String x:Key="profile.avatar">Avatar</sys:String>
+    <sys:String x:Key="profile.avatar.red">Red</sys:String>
+    <sys:String x:Key="profile.avatar.blue">Blue</sys:String>
+    <sys:String x:Key="profile.avatar.green">Green</sys:String>
+    <sys:String x:Key="profile.avatar.purple">Purple</sys:String>
+    <sys:String x:Key="profile.add">Add Profile</sys:String>
+    <sys:String x:Key="profile.delete">Delete</sys:String>
+    <sys:String x:Key="profile.continue">Continue</sys:String>
+
+    <sys:String x:Key="settings.title">Settings</sys:String>
+    <sys:String x:Key="settings.language">Language</sys:String>
+    <sys:String x:Key="settings.language.help">Atlas Hub ships with Turkish by default. Other languages can be added by the community as language packs.</sys:String>
+    <sys:String x:Key="settings.language.communityHint">Community language packs: %AppData%\AtlasHub\lang\*.json</sys:String>
+
+    <sys:String x:Key="sources.title">Sources</sys:String>
+    <sys:String x:Key="sources.add">Add Source</sys:String>
+    <sys:String x:Key="sources.name">Name</sys:String>
+    <sys:String x:Key="sources.m3u.url">M3U URL</sys:String>
+    <sys:String x:Key="sources.xmltv.url">XMLTV URL</sys:String>
+    <sys:String x:Key="sources.xmltv.save">Save XMLTV</sys:String>
+    <sys:String x:Key="sources.http.useragent">User-Agent</sys:String>
+    <sys:String x:Key="sources.http.referer">Referer</sys:String>
+    <sys:String x:Key="sources.http.timeout">Timeout (sec)</sys:String>
+    <sys:String x:Key="sources.save">Save</sys:String>
+    <sys:String x:Key="sources.delete">Delete</sys:String>
+    <sys:String x:Key="sources.enableForProfile">Enable for this profile</sys:String>
+    <sys:String x:Key="sources.refresh">Refresh Catalog</sys:String>
+    <sys:String x:Key="sources.reload">Reload</sys:String>
+    <sys:String x:Key="sources.enabled">Enabled</sys:String>
+    <sys:String x:Key="sources.toggle">Toggle for Profile</sys:String>
+
+    <sys:String x:Key="live.title">Live TV</sys:String>
+    <sys:String x:Key="live.search">Search…</sys:String>
+    <sys:String x:Key="live.refresh">Refresh</sys:String>
+    <sys:String x:Key="live.player.title">Player</sys:String>
+    <sys:String x:Key="live.epg.now">Now</sys:String>
+    <sys:String x:Key="live.epg.next">Next</sys:String>
+    <sys:String x:Key="live.copyUrl">Copy URL</sys:String>
+    <sys:String x:Key="live.controls.play">Play</sys:String>
+    <sys:String x:Key="live.controls.pause">Pause</sys:String>
+    <sys:String x:Key="live.controls.stop">Stop</sys:String>
+    <sys:String x:Key="live.controls.autoplay">Auto play</sys:String>
+    <sys:String x:Key="live.controls.mute">Mute</sys:String>
+    <sys:String x:Key="live.controls.volume">Volume</sys:String>
+
+    <sys:String x:Key="placeholder.text">This page is a temporary placeholder.</sys:String>
+
+</ResourceDictionary>

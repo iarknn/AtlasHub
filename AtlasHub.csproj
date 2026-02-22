@@ -1,0 +1,38 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<OutputType>WinExe</OutputType>
+		<TargetFramework>net8.0-windows</TargetFramework>
+		<UseWPF>true</UseWPF>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+
+		<AssemblyName>AtlasHub</AssemblyName>
+		<RootNamespace>AtlasHub</RootNamespace>
+	</PropertyGroup>
+
+	<ItemGroup>
+	  <Compile Remove="ViewModels\Class1.cs" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
+		<PackageReference Include="LibVLCSharp" Version="3.9.5" />
+		<PackageReference Include="LibVLCSharp.WPF" Version="3.9.5" />
+		<PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.0" />
+		<PackageReference Include="Microsoft.Extensions.Http" Version="8.0.0" />
+		<PackageReference Include="VideoLAN.LibVLC.Windows" Version="3.0.23" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <Page Update="Resources\Strings.en-US.xaml">
+	    <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+	    <Generator></Generator>
+	  </Page>
+	  <Page Update="Resources\Strings.tr-TR.xaml">
+	    <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+	    <Generator></Generator>
+	  </Page>
+	</ItemGroup>
+
+</Project>
