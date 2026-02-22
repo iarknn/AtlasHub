@@ -30,6 +30,13 @@ public partial class LiveTvPage : UserControl
     // Timeline measurement cache
     private double _timelineStride; // item width + margin
 
+    private enum VideoScaleMode
+    {
+        Fit,
+        Fill,
+        Original
+    }
+
     public LiveTvPage()
     {
         InitializeComponent();
@@ -52,6 +59,9 @@ public partial class LiveTvPage : UserControl
             if (VolumeValueText is not null) VolumeValueText.Text = vol.ToString();
         }
         catch { /* ignore */ }
+
+        // Varsayılan görüntü modu: Sığdır
+        ApplyVideoScaleMode(VideoScaleMode.Fit);
 
         HookVm();
         EnsureCategoryView();
@@ -358,5 +368,63 @@ public partial class LiveTvPage : UserControl
             if (VideoHost?.MediaPlayer is not null) VideoHost.MediaPlayer.Volume = vol;
         }
         catch { }
+    }
+
+    private void VideoFitModeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (VideoHost?.MediaPlayer is null) return;
+
+        try
+        {
+            var combo = (ComboBox)sender;
+            var item = combo.SelectedItem as ComboBoxItem;
+            var tag = item?.Tag as string ?? "Fit";
+
+            var mode = tag switch
+            {
+                "Fill" => VideoScaleMode.Fill,
+                "Original" => VideoScaleMode.Original,
+                _ => VideoScaleMode.Fit
+            };
+
+            ApplyVideoScaleMode(mode);
+        }
+        catch
+        {
+            // yut
+        }
+    }
+
+    private void ApplyVideoScaleMode(VideoScaleMode mode)
+    {
+        if (VideoHost?.MediaPlayer is null) return;
+
+        try
+        {
+            switch (mode)
+            {
+                case VideoScaleMode.Fit:
+                    // Pencereye oran korunarak sığdır
+                    VideoHost.MediaPlayer.AspectRatio = null; // otomatik
+                    VideoHost.MediaPlayer.Scale = 0;          // fit to window
+                    break;
+
+                case VideoScaleMode.Fill:
+                    // 16:9 doldurucu görünüm (bazı içeriklerde crop hissi olabilir)
+                    VideoHost.MediaPlayer.AspectRatio = "16:9";
+                    VideoHost.MediaPlayer.Scale = 0;
+                    break;
+
+                case VideoScaleMode.Original:
+                    // Kaynağın kendi çözünürlüğü
+                    VideoHost.MediaPlayer.AspectRatio = null;
+                    VideoHost.MediaPlayer.Scale = 1;          // 1:1 scale
+                    break;
+            }
+        }
+        catch
+        {
+            // platform/driver kaynaklı edge case'ler sessiz geçilsin
+        }
     }
 }

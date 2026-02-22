@@ -374,11 +374,30 @@
                             <Button Grid.Column="2" Width="44" Height="32" Margin="8,0,0,0" Content="⏹" Click="BtnStop_Click"/>
                             <Button Grid.Column="3" Width="44" Height="32" Margin="8,0,0,0" Content="🔇" Click="BtnMute_Click"/>
 
-                            <TextBlock Grid.Column="5"
-                                       VerticalAlignment="Center"
-                                       Foreground="{StaticResource BrushFg2}"
-                                       Text="Ses"
-                                       Margin="0,0,8,0"/>
+                            <!-- Görüntü modu + Ses label'ı -->
+                            <StackPanel Grid.Column="5"
+                                        Orientation="Horizontal"
+                                        VerticalAlignment="Center">
+                                <TextBlock Text="Görüntü"
+                                           Foreground="{StaticResource BrushFg2}"
+                                           Margin="0,0,4,0"
+                                           VerticalAlignment="Center"/>
+                                <ComboBox x:Name="VideoFitModeCombo"
+                                          Width="90"
+                                          SelectedIndex="0"
+                                          Margin="0,0,12,0"
+                                          VerticalAlignment="Center"
+                                          SelectionChanged="VideoFitModeCombo_SelectionChanged">
+                                    <ComboBoxItem Content="Sığdır" Tag="Fit"/>
+                                    <ComboBoxItem Content="Doldur" Tag="Fill"/>
+                                    <ComboBoxItem Content="Orijinal" Tag="Original"/>
+                                </ComboBox>
+
+                                <TextBlock Text="Ses"
+                                           Foreground="{StaticResource BrushFg2}"
+                                           VerticalAlignment="Center"
+                                           Margin="0,0,8,0"/>
+                            </StackPanel>
 
                             <Slider Grid.Column="6"
                                     x:Name="VolumeSlider"
