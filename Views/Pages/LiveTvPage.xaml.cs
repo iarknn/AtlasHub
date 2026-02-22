@@ -26,6 +26,10 @@ public partial class LiveTvPage : UserControl
     private bool _suppressClickAfterDrag;
     private const double DragThreshold = 6;
 
+    // Timeline measurement cache
+    private double _timelineStride; // item width + margin
+    private bool _layoutHookedForTimeline;
+
     public LiveTvPage()
     {
         InitializeComponent();
@@ -52,14 +56,21 @@ public partial class LiveTvPage : UserControl
         HookVm();
         EnsureCategoryView();
 
+        // First paint alignment
         Dispatcher.BeginInvoke(
-            () => ScrollSelectedIntoView(retries: 8),
+            () => ScrollSelectedIntoView(retries: 12),
             System.Windows.Threading.DispatcherPriority.Loaded);
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
         UnhookVm();
+
+        if (_layoutHookedForTimeline)
+        {
+            LayoutUpdated -= LiveTvPage_LayoutUpdated;
+            _layoutHookedForTimeline = false;
+        }
     }
 
     private void HookVm()
@@ -75,6 +86,7 @@ public partial class LiveTvPage : UserControl
     {
         if (_vmNpc is not null)
             _vmNpc.PropertyChanged -= VmOnPropertyChanged;
+
         _vmNpc = null;
     }
 
@@ -83,7 +95,7 @@ public partial class LiveTvPage : UserControl
         if (e.PropertyName == nameof(LiveTvViewModel.SelectedTimelineItem))
         {
             Dispatcher.BeginInvoke(
-                () => ScrollSelectedIntoView(retries: 8),
+                () => ScrollSelectedIntoView(retries: 12),
                 System.Windows.Threading.DispatcherPriority.Loaded);
         }
 
@@ -91,6 +103,15 @@ public partial class LiveTvPage : UserControl
         {
             EnsureCategoryView();
             _categoriesView?.Refresh();
+        }
+
+        // Timeline items updated -> stride may change
+        if (e.PropertyName == nameof(LiveTvViewModel.Timeline))
+        {
+            _timelineStride = 0;
+            Dispatcher.BeginInvoke(
+                () => ScrollSelectedIntoView(retries: 12),
+                System.Windows.Threading.DispatcherPriority.Loaded);
         }
     }
 
@@ -131,10 +152,13 @@ public partial class LiveTvPage : UserControl
         var selected = vm.SelectedTimelineItem;
         if (selected is null) return;
 
+        // Force layouts
         TimelineItems.UpdateLayout();
         TimelineScroll.UpdateLayout();
 
         var container = TimelineItems.ItemContainerGenerator.ContainerFromItem(selected) as FrameworkElement;
+
+        // Container not generated yet -> retry or hook LayoutUpdated once
         if (container is null)
         {
             if (retries > 0)
@@ -142,6 +166,10 @@ public partial class LiveTvPage : UserControl
                 Dispatcher.BeginInvoke(
                     () => ScrollSelectedIntoView(retries - 1),
                     System.Windows.Threading.DispatcherPriority.Loaded);
+            }
+            else
+            {
+                HookLayoutUpdatedForTimeline();
             }
             return;
         }
@@ -155,21 +183,26 @@ public partial class LiveTvPage : UserControl
                     () => ScrollSelectedIntoView(retries - 1),
                     System.Windows.Threading.DispatcherPriority.Loaded);
             }
+            else
+            {
+                HookLayoutUpdatedForTimeline();
+            }
             return;
         }
 
         container.UpdateLayout();
         viewport.UpdateLayout();
 
+        EnsureTimelineStride(container);
+
         try
         {
+            // container's left relative to viewport
             var p = container.TransformToAncestor(viewport).Transform(new Point(0, 0));
             var leftInset = TimelineScroll.Padding.Left;
 
             var target = TimelineScroll.HorizontalOffset + p.X - leftInset;
-
-            if (target < 0) target = 0;
-            if (target > TimelineScroll.ScrollableWidth) target = TimelineScroll.ScrollableWidth;
+            target = Clamp(target, 0, TimelineScroll.ScrollableWidth);
 
             TimelineScroll.ScrollToHorizontalOffset(target);
         }
@@ -181,8 +214,48 @@ public partial class LiveTvPage : UserControl
                     () => ScrollSelectedIntoView(retries - 1),
                     System.Windows.Threading.DispatcherPriority.Loaded);
             }
+            else
+            {
+                HookLayoutUpdatedForTimeline();
+            }
         }
     }
+
+    private void HookLayoutUpdatedForTimeline()
+    {
+        if (_layoutHookedForTimeline) return;
+        _layoutHookedForTimeline = true;
+        LayoutUpdated += LiveTvPage_LayoutUpdated;
+    }
+
+    private void LiveTvPage_LayoutUpdated(object? sender, EventArgs e)
+    {
+        // One-shot: once layout is stable, align and unhook.
+        if (TimelineScroll is null || TimelineItems is null) return;
+        if (DataContext is not LiveTvViewModel vm) return;
+        if (vm.SelectedTimelineItem is null) return;
+
+        LayoutUpdated -= LiveTvPage_LayoutUpdated;
+        _layoutHookedForTimeline = false;
+
+        ScrollSelectedIntoView(retries: 6);
+    }
+
+    private void EnsureTimelineStride(FrameworkElement anyContainer)
+    {
+        if (_timelineStride > 0) return;
+
+        // Use actual width + margin as stride (deterministic snap)
+        var w = anyContainer.ActualWidth;
+        var m = anyContainer.Margin;
+        var stride = w + m.Left + m.Right;
+
+        if (stride > 1)
+            _timelineStride = stride;
+    }
+
+    private static double Clamp(double v, double min, double max)
+        => v < min ? min : (v > max ? max : v);
 
     private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
     {
@@ -217,13 +290,21 @@ public partial class LiveTvPage : UserControl
 
         var nextItem = vm.Timeline[nextIndex];
 
+        // Prefer command (keeps selection visuals consistent)
         if (vm.SelectTimelineItemCommand is not null && vm.SelectTimelineItemCommand.CanExecute(nextItem))
         {
             vm.SelectTimelineItemCommand.Execute(nextItem);
-            return true;
+        }
+        else
+        {
+            vm.SelectedTimelineItem = nextItem;
         }
 
-        vm.SelectedTimelineItem = nextItem;
+        // Extra guarantee
+        Dispatcher.BeginInvoke(
+            () => ScrollSelectedIntoView(retries: 8),
+            System.Windows.Threading.DispatcherPriority.Loaded);
+
         return true;
     }
 
@@ -239,7 +320,7 @@ public partial class LiveTvPage : UserControl
     }
 
     // ----------------------------
-    // Drag-to-scroll (free, no snap)
+    // Drag-to-scroll + snap-to-card
     // ----------------------------
     private void TimelineScroll_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
@@ -266,9 +347,7 @@ public partial class LiveTvPage : UserControl
             _suppressClickAfterDrag = true;
 
         var target = _dragStartOffset - dx;
-
-        if (target < 0) target = 0;
-        if (target > TimelineScroll.ScrollableWidth) target = TimelineScroll.ScrollableWidth;
+        target = Clamp(target, 0, TimelineScroll.ScrollableWidth);
 
         TimelineScroll.ScrollToHorizontalOffset(target);
         e.Handled = true;
@@ -283,12 +362,40 @@ public partial class LiveTvPage : UserControl
             _isDragging = false;
             TimelineScroll.ReleaseMouseCapture();
 
+            // Snap only if user actually dragged
             if (_suppressClickAfterDrag)
             {
+                SnapTimelineToNearestCard();
                 e.Handled = true;
                 _suppressClickAfterDrag = false;
+                return;
             }
+
+            // If it was a "click" on empty rail, let it bubble.
+            _suppressClickAfterDrag = false;
         }
+    }
+
+    private void SnapTimelineToNearestCard()
+    {
+        if (TimelineScroll is null || TimelineItems is null) return;
+
+        // Ensure stride (try to compute from first container)
+        if (_timelineStride <= 0 && TimelineItems.Items.Count > 0)
+        {
+            TimelineItems.UpdateLayout();
+            var first = TimelineItems.ItemContainerGenerator.ContainerFromIndex(0) as FrameworkElement;
+            if (first is not null)
+                EnsureTimelineStride(first);
+        }
+
+        if (_timelineStride <= 1) return;
+
+        var offset = TimelineScroll.HorizontalOffset;
+        var snapped = Math.Round(offset / _timelineStride) * _timelineStride;
+        snapped = Clamp(snapped, 0, TimelineScroll.ScrollableWidth);
+
+        TimelineScroll.ScrollToHorizontalOffset(snapped);
     }
 
     // ----------------------------
