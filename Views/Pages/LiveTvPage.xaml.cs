@@ -1,5 +1,6 @@
 ﻿using System;
 using System.ComponentModel;
+using System.Runtime.Versioning;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -11,6 +12,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace AtlasHub.Views.Pages;
 
+[SupportedOSPlatform("windows7.0")]
 public partial class LiveTvPage : UserControl
 {
     private INotifyPropertyChanged? _vmNpc;

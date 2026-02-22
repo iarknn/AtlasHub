@@ -21,6 +21,7 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
     private readonly LiveEpgTickerService _ticker;
     private readonly AppEventBus _bus;
 
+    // Katalog ve EPG cache
     private Dictionary<string, CatalogSnapshot> _catalogs = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, EpgSnapshot?> _epgCache = new(StringComparer.OrdinalIgnoreCase);
 
@@ -37,6 +38,14 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private string _statusText = "";
 
+    // Progress bar için writable property (TwoWay binding’e toleranslı)
+    private double _selectedProgramProgress;
+    public double SelectedProgramProgress
+    {
+        get => _selectedProgramProgress;
+        set => SetProperty(ref _selectedProgramProgress, value);
+    }
+
     public bool HasSelectedProgram => SelectedTimelineItem is not null;
 
     public string SelectedProgramTitle => SelectedTimelineItem?.Title ?? string.Empty;
@@ -52,8 +61,6 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
             : SelectedTimelineItem!.Description!;
 
     public bool IsSelectedProgramNow => SelectedTimelineItem?.IsNow == true;
-
-    public double SelectedProgramProgress => SelectedTimelineItem?.Progress ?? 0;
 
     public string SelectedProgramRemainingText
     {
@@ -96,6 +103,10 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
 
         _ = RefreshAsync();
     }
+
+    // -----------------------
+    // Commands
+    // -----------------------
 
     [RelayCommand]
     private async Task RefreshAsync()
@@ -145,15 +156,19 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
             t.IsSelected = ReferenceEquals(t, item);
 
         SelectedTimelineItem = item;
+        SelectedProgramProgress = item.Progress;
 
         OnPropertyChanged(nameof(HasSelectedProgram));
         OnPropertyChanged(nameof(SelectedProgramTitle));
         OnPropertyChanged(nameof(SelectedProgramTimeRange));
         OnPropertyChanged(nameof(SelectedProgramDescription));
         OnPropertyChanged(nameof(IsSelectedProgramNow));
-        OnPropertyChanged(nameof(SelectedProgramProgress));
         OnPropertyChanged(nameof(SelectedProgramRemainingText));
     }
+
+    // -----------------------
+    // Selection change hooks
+    // -----------------------
 
     partial void OnSelectedScopeChanged(ProviderScope? value) => BuildCategories();
 
@@ -167,17 +182,29 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
         {
             Timeline.Clear();
             SelectedTimelineItem = null;
+            SelectedProgramProgress = 0;
             _ticker.Stop();
 
             OnPropertyChanged(nameof(HasSelectedProgram));
             return;
         }
 
-        try { _player.Play(value.StreamUrl); } catch { }
+        try
+        {
+            _player.Play(value.StreamUrl);
+        }
+        catch
+        {
+            // native taraf bazen exception atabilir; UI kilitlenmesin
+        }
 
         await LoadTimelineForSelectedChannelAsync();
         _ticker.Start();
     }
+
+    // -----------------------
+    // Builders
+    // -----------------------
 
     private void BuildCategories()
     {
@@ -187,6 +214,7 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
         SelectedCategory = null;
         SelectedChannel = null;
         SelectedTimelineItem = null;
+        SelectedProgramProgress = 0;
 
         if (SelectedScope is null) return;
 
@@ -203,6 +231,7 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
         Timeline.Clear();
         SelectedChannel = null;
         SelectedTimelineItem = null;
+        SelectedProgramProgress = 0;
 
         if (SelectedScope is null || string.IsNullOrWhiteSpace(SelectedCategory))
             return;
@@ -218,6 +247,7 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
     {
         Timeline.Clear();
         SelectedTimelineItem = null;
+        SelectedProgramProgress = 0;
 
         if (SelectedChannel is null) return;
 
@@ -238,12 +268,17 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
             }
 
             var nowUtc = DateTimeOffset.UtcNow;
-            var items = _epg.GetTimelineItems(
+
+            // EPG servisinden timeline items al (progress=int)
+            var rawItems = _epg.GetTimelineItems(
                 epgSnap,
                 SelectedChannel.Channel,
                 nowUtc,
                 pastWindow: TimeSpan.FromHours(2),
                 futureWindow: TimeSpan.FromHours(6));
+
+            // 🔧 BURADA TEKRARLARI TEMİZLİYORUZ
+            var items = DeduplicateTimelineItems(rawItems);
 
             if (items.Count == 0)
             {
@@ -253,17 +288,18 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
 
             var nowLocal = DateTimeOffset.Now;
 
-            foreach (var (program, isNow, progress) in items)
+            foreach (var (program, isNow, progressInt) in items)
             {
                 var vm = new EpgTimelineItemVm(program)
                 {
                     IsNow = isNow,
-                    Progress = progress
+                    Progress = progressInt, // int -> double
+                    IsSelected = false
                 };
 
-                // güvence: local bazlı da doğrula (küçük farklar için)
+                // Local saate göre ekstra güncelle
                 vm.IsNow = vm.IsNowAt(nowLocal);
-                vm.Progress = vm.IsNow ? vm.GetProgressPercent(nowLocal) : 0;
+                vm.Progress = vm.IsNow ? vm.GetProgressPercent(nowLocal) : vm.Progress;
 
                 Timeline.Add(vm);
             }
@@ -277,6 +313,63 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
             StatusText = "EPG hatası: " + ex.Message;
         }
     }
+
+    /// <summary>
+    /// Aynı programı (ChannelId + Start/End + NormalizedTitle) bir kez bırakır.
+    /// </summary>
+    private static IReadOnlyList<(EpgProgram program, bool isNow, int progress)> DeduplicateTimelineItems(
+        IReadOnlyList<(EpgProgram program, bool isNow, int progress)> items)
+    {
+        if (items.Count == 0)
+            return items;
+
+        var grouped = items
+            .GroupBy(x => new
+            {
+                x.program.ChannelId,
+                x.program.StartUtc,
+                x.program.EndUtc,
+                Title = NormalizeTitle(x.program.Title)
+            });
+
+        var result = new List<(EpgProgram program, bool isNow, int progress)>();
+
+        foreach (var g in grouped)
+        {
+            // Aynı programdan birden fazla varsa:
+            // - Önce "şu an" olanı tercih et
+            // - Sonra başlık uzunluğu küçük olanı (daha sade)
+            var chosen = g
+                .OrderByDescending(x => x.isNow)
+                .ThenBy(x => (x.program.Title ?? string.Empty).Length)
+                .First();
+
+            result.Add(chosen);
+        }
+
+        // Zaman sırasına göre
+        result.Sort((a, b) => a.program.StartUtc.CompareTo(b.program.StartUtc));
+
+        return result;
+    }
+
+    private static string NormalizeTitle(string? title)
+    {
+        if (string.IsNullOrWhiteSpace(title))
+            return string.Empty;
+
+        var s = title.Trim();
+
+        // Çift boşlukları sadeleştir
+        while (s.Contains("  ", StringComparison.Ordinal))
+            s = s.Replace("  ", " ", StringComparison.Ordinal);
+
+        return s.ToUpperInvariant();
+    }
+
+    // -----------------------
+    // Ticker
+    // -----------------------
 
     private void OnTickerTick()
     {
@@ -304,8 +397,10 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
         }
         else
         {
+            // Progress property’yi de güncel tut
+            SelectedProgramProgress = selected.Progress;
+
             OnPropertyChanged(nameof(IsSelectedProgramNow));
-            OnPropertyChanged(nameof(SelectedProgramProgress));
             OnPropertyChanged(nameof(SelectedProgramRemainingText));
         }
     }

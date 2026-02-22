@@ -75,7 +75,7 @@ public sealed class EpgService
             windowed.Add(p);
         }
 
-        // ✅ SAFE dedup: sadece net duplicate (aynı start/end/title)
+        // ✅ SAFE dedup: yine strict ama hafif zaman farklarına toleranslı
         return DedupTimelineProgramsStrict(windowed);
     }
 
@@ -332,30 +332,87 @@ public sealed class EpgService
     }
 
     // ------------------------------------------------------------
-    // Timeline dedup (SAFE / strict)
+    // Timeline dedup (STRICT ama tolere edici)
     // ------------------------------------------------------------
 
+    /// <summary>
+    /// Aynı kanal ve benzer zaman aralığına sahip, başlığı aynı olan programları tekilleştirir.
+    /// Multi-EPG kaynaklardan gelen hafif kaymış kopyaları temizlemek için tasarlanmıştır.
+    /// </summary>
     private static List<EpgProgram> DedupTimelineProgramsStrict(List<EpgProgram> programs)
     {
         if (programs.Count <= 1) return programs;
 
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // Zaten sorted geliyor ama garanti olsun
+        programs.Sort(static (a, b) => a.StartUtc.CompareTo(b.StartUtc));
+
         var result = new List<EpgProgram>(programs.Count);
+
+        EpgProgram? last = null;
 
         foreach (var p in programs)
         {
-            var ch = (p.ChannelId ?? "").Trim();
-            var titleKey = NormalizeProgramTitle(p.Title);
-
-            // Start/End birebir: “agresif” tolerans yok
-            var key = $"{ch}|{p.StartUtc.UtcDateTime:O}|{p.EndUtc.UtcDateTime:O}|{titleKey}";
-
-            if (seen.Add(key))
+            if (last is null)
+            {
                 result.Add(p);
+                last = p;
+                continue;
+            }
+
+            var chLast = (last.ChannelId ?? "").Trim();
+            var chCurr = (p.ChannelId ?? "").Trim();
+
+            // Farklı channel id ise hiç dokunma
+            if (!chLast.Equals(chCurr, StringComparison.OrdinalIgnoreCase))
+            {
+                result.Add(p);
+                last = p;
+                continue;
+            }
+
+            var titleLast = NormalizeProgramTitle(last.Title);
+            var titleCurr = NormalizeProgramTitle(p.Title);
+
+            // Başlık farklıysa duplicate sayma
+            if (!titleLast.Equals(titleCurr, StringComparison.OrdinalIgnoreCase))
+            {
+                result.Add(p);
+                last = p;
+                continue;
+            }
+
+            // Zaman farkı / overlap hesabı
+            var startDiff = (p.StartUtc - last.StartUtc).Duration();
+            var endDiff = (p.EndUtc - last.EndUtc).Duration();
+
+            var overlapStart = last.StartUtc > p.StartUtc ? last.StartUtc : p.StartUtc;
+            var overlapEnd = last.EndUtc < p.EndUtc ? last.EndUtc : p.EndUtc;
+            var overlap = overlapEnd - overlapStart;
+
+            var lenLast = last.EndUtc - last.StartUtc;
+            var lenCurr = p.EndUtc - p.StartUtc;
+
+            bool nearlySameTimes =
+                startDiff <= TimeSpan.FromMinutes(2) &&
+                endDiff <= TimeSpan.FromMinutes(2);
+
+            bool heavilyOverlapping = overlap > TimeSpan.Zero &&
+                                      lenLast > TimeSpan.Zero &&
+                                      lenCurr > TimeSpan.Zero &&
+                                      overlap.TotalMinutes / Math.Min(lenLast.TotalMinutes, lenCurr.TotalMinutes) >= 0.8;
+
+            // Eğer başlık aynı ve zamanlar neredeyse aynı / yoğun overlap varsa "duplicate" say
+            if (nearlySameTimes || heavilyOverlapping)
+            {
+                // last'ı koruyoruz, p'yi atlıyoruz
+                continue;
+            }
+
+            // Farklı zaman slotu, gerçek tekrar yayını olabilir -> ekle
+            result.Add(p);
+            last = p;
         }
 
-        // Zaten sorted geliyor ama garanti olsun
-        result.Sort(static (a, b) => a.StartUtc.CompareTo(b.StartUtc));
         return result;
     }
 
