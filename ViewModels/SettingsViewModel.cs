@@ -1,11 +1,12 @@
-﻿using System.Collections.ObjectModel;
+﻿using System;
+using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Linq;
-using CommunityToolkit.Mvvm.ComponentModel;
-using CommunityToolkit.Mvvm.Input;
 using AtlasHub.Localization;
 using AtlasHub.Models;
 using AtlasHub.Services;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 
 namespace AtlasHub.ViewModels;
 
@@ -33,7 +34,8 @@ public partial class SettingsViewModel : ViewModelBase
 
         SelectedLanguage =
             Languages.FirstOrDefault(l =>
-                l.CultureName.Equals(_settings.Current.CultureName, StringComparison.OrdinalIgnoreCase))
+                l.CultureName.Equals(_settings.Current.CultureName,
+                    StringComparison.OrdinalIgnoreCase))
             ?? Languages.FirstOrDefault();
     }
 
@@ -42,16 +44,46 @@ public partial class SettingsViewModel : ViewModelBase
     {
         Languages.Clear();
 
-        // Built-in: Türkçe
-        Languages.Add(new LanguageOption("tr-TR", "Türkçe (Dahili)", true));
+        // 1) Built-in: Türkçe
+        var trCulture = new CultureInfo("tr-TR");
+        var trBaseName = trCulture.NativeName; // örn: "Türkçe (Türkiye)"
 
-        // Community packs
+        var builtInSuffix = _loc["Settings.Language.BuiltInSuffix"];
+        var builtInDisplay = string.IsNullOrWhiteSpace(builtInSuffix)
+            ? trBaseName
+            : $"{trBaseName} {builtInSuffix}";
+
+        Languages.Add(new LanguageOption("tr-TR", builtInDisplay, true));
+
+        // 2) Topluluk JSON paketleri
+        var communitySuffix = _loc["Settings.Language.CommunitySuffix"];
+
         foreach (var cultureName in _packs.GetAvailableCultureFiles())
         {
             if (cultureName.Equals("tr-TR", StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            Languages.Add(new LanguageOption(cultureName, $"{cultureName} (Topluluk)", false));
+            string baseName;
+
+            try
+            {
+                var ci = new CultureInfo(cultureName);
+
+                // NativeName: OS diline göre "English (United States)" / "Deutsch (Deutschland)" vs.
+                // Eğer hep İngilizce görmek istersen EnglishName kullanabiliriz.
+                baseName = ci.NativeName;
+            }
+            catch (CultureNotFoundException)
+            {
+                // Geçersiz culture koduysa dosya adını aynen göster.
+                baseName = cultureName;
+            }
+
+            var display = string.IsNullOrWhiteSpace(communitySuffix)
+                ? baseName
+                : $"{baseName} {communitySuffix}";
+
+            Languages.Add(new LanguageOption(cultureName, display, false));
         }
     }
 
@@ -63,7 +95,6 @@ public partial class SettingsViewModel : ViewModelBase
 
         _settings.SetCulture(SelectedLanguage.CultureName);
         _packs.ClearCache();
-
         _loc.SetCulture(new CultureInfo(SelectedLanguage.CultureName));
     }
 }

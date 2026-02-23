@@ -131,6 +131,10 @@ public sealed class LocalizationService : INotifyPropertyChanged
             ["Settings.Language.CommunityPath"] =
                 @"%AppData%\AtlasHub\lang\*.json",
 
+            // Dil listesi için suffix'ler
+            ["Settings.Language.BuiltInSuffix"] = "(Dahili)",
+            ["Settings.Language.CommunitySuffix"] = "(Topluluk)",
+
             // Placeholder (Movies / Series) – TR
             ["Placeholder.Generic.Line1"] =
                 "Bu modül henüz hazır değil.",
