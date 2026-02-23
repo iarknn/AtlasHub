@@ -8,6 +8,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using AtlasHub.Services;
 using AtlasHub.ViewModels;
+using AtlasHub.Views;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace AtlasHub.Views.Pages;
@@ -29,6 +30,9 @@ public partial class LiveTvPage : UserControl
 
     // Timeline measurement cache
     private double _timelineStride; // item width + margin
+
+    // Fullscreen
+    private FullScreenPlayerWindow? _fullScreenWindow;
 
     private enum VideoScaleMode
     {
@@ -74,6 +78,17 @@ public partial class LiveTvPage : UserControl
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
+        // Fullscreen açıksa kapat (VideoHost geri gelsin)
+        try
+        {
+            if (_fullScreenWindow is not null)
+            {
+                _fullScreenWindow.Close();
+                _fullScreenWindow = null;
+            }
+        }
+        catch { }
+
         UnhookVm();
     }
 
@@ -410,7 +425,7 @@ public partial class LiveTvPage : UserControl
                     break;
 
                 case VideoScaleMode.Fill:
-                    // 16:9 doldurucu görünüm (bazı içeriklerde crop hissi olabilir)
+                    // 16:9 doldurucu görünüm
                     VideoHost.MediaPlayer.AspectRatio = "16:9";
                     VideoHost.MediaPlayer.Scale = 0;
                     break;
@@ -424,7 +439,52 @@ public partial class LiveTvPage : UserControl
         }
         catch
         {
-            // platform/driver kaynaklı edge case'ler sessiz geçilsin
+        }
+    }
+
+    // ----------------------------
+    // Fullscreen
+    // ----------------------------
+    private void BtnFullscreen_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (_fullScreenWindow is { IsVisible: true }) return;
+            if (VideoHost is null || VideoContainer is null) return;
+
+            // VideoHost'u mevcut container'dan çıkar
+            if (ReferenceEquals(VideoContainer.Child, VideoHost))
+                VideoContainer.Child = null;
+
+            _fullScreenWindow = new FullScreenPlayerWindow(VideoHost);
+            _fullScreenWindow.Owner = Window.GetWindow(this);
+            _fullScreenWindow.Closed += FullScreenWindowOnClosed;
+            _fullScreenWindow.Show();
+        }
+        catch
+        {
+            // UI'yi devirmeyelim
+        }
+    }
+
+    private void FullScreenWindowOnClosed(object? sender, EventArgs e)
+    {
+        if (_fullScreenWindow is not null)
+        {
+            _fullScreenWindow.Closed -= FullScreenWindowOnClosed;
+            _fullScreenWindow = null;
+        }
+
+        try
+        {
+            if (VideoContainer is not null && VideoHost is not null && VideoContainer.Child is null)
+            {
+                // VideoHost'u tekrar normal container'a tak
+                VideoContainer.Child = VideoHost;
+            }
+        }
+        catch
+        {
         }
     }
 }

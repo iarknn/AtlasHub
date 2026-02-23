@@ -172,7 +172,8 @@
                                Margin="0,0,0,10"/>
 
                     <!-- Video -->
-                    <Border Grid.Row="1"
+                    <Border x:Name="VideoContainer"
+                            Grid.Row="1"
                             CornerRadius="12"
                             Background="#07070C"
                             BorderBrush="#22FFFFFF"
@@ -360,13 +361,23 @@
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto"/>
+                                <!-- Play -->
                                 <ColumnDefinition Width="Auto"/>
+                                <!-- Pause -->
                                 <ColumnDefinition Width="Auto"/>
+                                <!-- Stop -->
                                 <ColumnDefinition Width="Auto"/>
+                                <!-- Mute -->
+                                <ColumnDefinition Width="Auto"/>
+                                <!-- Fullscreen -->
                                 <ColumnDefinition Width="16"/>
+                                <!-- Spacer -->
                                 <ColumnDefinition Width="Auto"/>
+                                <!-- Görüntü + Ses label -->
                                 <ColumnDefinition Width="*"/>
+                                <!-- Slider -->
                                 <ColumnDefinition Width="Auto"/>
+                                <!-- Value -->
                             </Grid.ColumnDefinitions>
 
                             <Button Grid.Column="0" Width="44" Height="32" Content="⏵" Click="BtnPlay_Click"/>
@@ -374,8 +385,17 @@
                             <Button Grid.Column="2" Width="44" Height="32" Margin="8,0,0,0" Content="⏹" Click="BtnStop_Click"/>
                             <Button Grid.Column="3" Width="44" Height="32" Margin="8,0,0,0" Content="🔇" Click="BtnMute_Click"/>
 
+                            <!-- Tam ekran -->
+                            <Button Grid.Column="4"
+                                    Width="44"
+                                    Height="32"
+                                    Margin="8,0,0,0"
+                                    Content="⛶"
+                                    ToolTip="Tam ekran (ESC ile çık)"
+                                    Click="BtnFullscreen_Click"/>
+
                             <!-- Görüntü modu + Ses label'ı -->
-                            <StackPanel Grid.Column="5"
+                            <StackPanel Grid.Column="6"
                                         Orientation="Horizontal"
                                         VerticalAlignment="Center">
                                 <TextBlock Text="Görüntü"
@@ -399,7 +419,7 @@
                                            Margin="0,0,8,0"/>
                             </StackPanel>
 
-                            <Slider Grid.Column="6"
+                            <Slider Grid.Column="7"
                                     x:Name="VolumeSlider"
                                     Minimum="0"
                                     Maximum="100"
@@ -407,7 +427,7 @@
                                     VerticalAlignment="Center"
                                     ValueChanged="VolumeSlider_ValueChanged"/>
 
-                            <TextBlock Grid.Column="7"
+                            <TextBlock Grid.Column="8"
                                        x:Name="VolumeValueText"
                                        VerticalAlignment="Center"
                                        Foreground="{StaticResource BrushFg2}"
