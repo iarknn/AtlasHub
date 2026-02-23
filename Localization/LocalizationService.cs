@@ -9,16 +9,19 @@ public sealed class LocalizationService : INotifyPropertyChanged
 {
     private readonly LanguagePackRepository _packs;
 
-    // Aktif birleşik sözlük (built-in + JSON pack override)
+    // Aktif birleşik sözlük (TR built-in + JSON override)
     private Dictionary<string, string> _current =
         new(StringComparer.OrdinalIgnoreCase);
 
-    // Built-in TR / EN string’leri
+    // Tek built-in sözlük: Türkçe
     private static readonly Dictionary<string, string> BuiltInTr = BuildTr();
-    private static readonly Dictionary<string, string> BuiltInEn = BuildEn();
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
+    /// <summary>
+    /// Uygulamanın aktif kültürü (sadece formatlama + JSON pack seçimi için).
+    /// Metinlerin temeli her zaman Türkçe built-in sözlüktür.
+    /// </summary>
     public CultureInfo CurrentCulture { get; private set; } = new("tr-TR");
 
     public LocalizationService(LanguagePackRepository packs)
@@ -39,7 +42,7 @@ public sealed class LocalizationService : INotifyPropertyChanged
 
             return _current.TryGetValue(key, out var value)
                 ? value
-                : key; // fallback: key'i göster
+                : key; // fallback: key'i göster, eksik çeviri anlaşılır olsun
         }
     }
 
@@ -63,14 +66,13 @@ public sealed class LocalizationService : INotifyPropertyChanged
 
     private void Rebuild()
     {
-        var baseDict = GetBuiltIn(CurrentCulture);
-
-        // Built-in kopyası
+        // 1) Temelde her zaman TR sözlük var
         var merged = new Dictionary<string, string>(
-            baseDict,
+            BuiltInTr,
             StringComparer.OrdinalIgnoreCase);
 
-        // JSON language pack override (varsa)
+        // 2) İlgili kültür için JSON pack varsa üzerine yaz
+        //    Örn: en-US seçili ise %AppData%\AtlasHub\lang\en-US.json
         var pack = _packs.Load(CurrentCulture);
         foreach (var kvp in pack)
             merged[kvp.Key] = kvp.Value;
@@ -78,20 +80,6 @@ public sealed class LocalizationService : INotifyPropertyChanged
         _current = merged;
 
         RaiseAllChanged();
-    }
-
-    private static Dictionary<string, string> GetBuiltIn(CultureInfo culture)
-    {
-        var name = culture.Name;
-
-        if (name.StartsWith("tr", StringComparison.OrdinalIgnoreCase))
-            return BuiltInTr;
-
-        if (name.StartsWith("en", StringComparison.OrdinalIgnoreCase))
-            return BuiltInEn;
-
-        // Diğer tüm kültürler için varsayılan EN
-        return BuiltInEn;
     }
 
     private void RaiseAllChanged()
@@ -106,7 +94,7 @@ public sealed class LocalizationService : INotifyPropertyChanged
     }
 
     // -------------------
-    // Built-in sözlükler
+    // Built-in TR sözlük
     // -------------------
 
     private static Dictionary<string, string> BuildTr()
@@ -142,44 +130,57 @@ public sealed class LocalizationService : INotifyPropertyChanged
                 "Ek diller JSON tabanlı dil paketleri ile eklenir.",
             ["Settings.Language.CommunityPath"] =
                 @"%AppData%\AtlasHub\lang\*.json",
-        };
 
-        return d;
-    }
+            // Placeholder (Movies / Series) – TR
+            ["Placeholder.Generic.Line1"] =
+                "Bu modül henüz hazır değil.",
+            ["Placeholder.Generic.Line2"] =
+                "Önümüzdeki sprintlerde film ve dizi kütüphanesi bu ekranda açılacak.",
+            ["Placeholder.Generic.FeaturesTitle"] =
+                "Planlanan özellikler:",
+            ["Placeholder.Generic.Feature1"] =
+                "Kaynaklardan gelen film / dizi listeleri",
+            ["Placeholder.Generic.Feature2"] =
+                "Tür, yıl, dil ve etiket filtreleri",
+            ["Placeholder.Generic.Feature3"] =
+                "Devam ettiğin içerikleri profil bazlı takip",
+            ["Placeholder.Generic.Footer"] =
+                "Şimdilik canlı TV ve kaynak yönetimi öncelikli. Bu ekran Sprint 2–3’te canlanacak.",
 
-    private static Dictionary<string, string> BuildEn()
-    {
-        var d = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            // App / Nav
-            ["App.Title"] = "Atlas Hub",
+            // Live TV page – TR (UI)
+            ["LiveTv.PlayerTitle"] = "Oynatıcı",
+            ["LiveTv.ProgramDetailsTitle"] = "Program Detayı",
+            ["LiveTv.TimelineTitle"] = "Timeline",
+            ["LiveTv.Search.Category"] = "Kategori ara...",
+            ["LiveTv.Search.Channel"] = "Kanal ara...",
+            ["LiveTv.VideoModeLabel"] = "Görüntü",
+            ["LiveTv.VolumeLabel"] = "Ses",
+            ["LiveTv.FullscreenTooltip"] = "Tam ekran (ESC ile çık)",
+            ["LiveTv.RefreshButton"] = "Yenile",
+            ["LiveTv.Scope.AllSources"] = "Tüm Kaynaklar",
 
-            ["Nav.LiveTv"] = "Live TV",
-            ["Nav.Movies"] = "Movies",
-            ["Nav.Series"] = "Series",
-            ["Nav.Sources"] = "Sources",
-            ["Nav.Settings"] = "Settings",
+            // Live TV – durum / metinler (VM)
+            ["LiveTv.Status.ProfileNotSelected"] = "Profil seçilmedi.",
+            ["LiveTv.Status.Loading"] = "Yükleniyor...",
+            ["LiveTv.Status.NoActiveSource"] =
+                "Etkin kaynak yok.\nSources ekranından kaynak ekleyin/etkinleştirin.",
+            ["LiveTv.Status.Ready"] = "Hazır",
+            ["LiveTv.Status.LoadErrorPrefix"] = "Yükleme hatası: {0}",
+            ["LiveTv.Status.EpgErrorPrefix"] = "EPG hatası: {0}",
 
-            ["Nav.StatusHeader"] = "Status",
-            ["Nav.SprintStatus"] = "Sprint 1: Live",
+            ["LiveTv.Program.NoDescription"] = "Açıklama yok",
+            ["LiveTv.Program.RemainingEnded"] = "Bitti",
+            ["LiveTv.Program.RemainingHoursMinutes"] = "Kalan: {0} sa {1} dk",
+            ["LiveTv.Program.RemainingMinutes"] = "Kalan: {0} dk",
 
-            // Settings page
-            ["Settings.Title"] = "Settings",
-            ["Settings.Subtitle"] = "Language and application preferences",
+            // Live TV – kanal listesi
+            ["LiveTv.Channel.FallbackNowTitle"] = "Program",
+            ["LiveTv.Channel.FallbackNextTitle"] = "Sonraki program",
+            ["LiveTv.Channel.NextPrefix"] = "Sonra: {0}",
 
-            ["Settings.Language.SectionTitle"] = "Language",
-            ["Settings.Language.SectionDescription"] =
-                "Atlas Hub ships with Turkish by default. Other languages can be added by the community as language packs.",
-
-            ["Settings.Language.Label"] = "App language",
-            ["Settings.Language.Reload"] = "Reload languages",
-            ["Settings.Language.Apply"] = "Apply",
-
-            ["Settings.Language.CommunityTitle"] = "Community language packs",
-            ["Settings.Language.CommunityDescription"] =
-                "Additional languages are provided as JSON-based language packs.",
-            ["Settings.Language.CommunityPath"] =
-                @"%AppData%\AtlasHub\lang\*.json",
+            // Providers – durum metinleri
+            ["Providers.Status.ProfileNotSelected"] = "Profil seçili değil.",
+            ["Providers.Status.XmltvSaved"] = "XMLTV kaydedildi."
         };
 
         return d;

@@ -2,11 +2,11 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
-using CommunityToolkit.Mvvm.ComponentModel;
-using CommunityToolkit.Mvvm.Input;
 using AtlasHub.Localization;
 using AtlasHub.Services;
 using AtlasHub.Views.Pages;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 
 namespace AtlasHub.ViewModels;
 
@@ -17,7 +17,6 @@ public partial class ShellViewModel : ViewModelBase
     private readonly ProvidersViewModel _providersVm;
     private readonly SettingsViewModel _settingsVm;
     private readonly AppEventBus _bus;
-    private readonly LocalizationService _loc;
     private readonly DispatcherTimer _toastTimer;
 
     // Page cache (sekme değişimlerinde takılmayı azaltır)
@@ -30,11 +29,8 @@ public partial class ShellViewModel : ViewModelBase
     public string ProfileDisplay =>
         _state.CurrentProfile is null ? "—" : _state.CurrentProfile.Name;
 
-    [ObservableProperty]
-    private UserControl _currentPage;
-
-    [ObservableProperty]
-    private string _selectedNav = "live";
+    [ObservableProperty] private UserControl _currentPage;
+    [ObservableProperty] private string _selectedNav = "live";
 
     public bool IsLive => SelectedNav == "live";
     public bool IsMovies => SelectedNav == "movies";
@@ -42,26 +38,21 @@ public partial class ShellViewModel : ViewModelBase
     public bool IsSources => SelectedNav == "sources";
     public bool IsSettings => SelectedNav == "settings";
 
-    [ObservableProperty]
-    private string _toastMessage = "";
-
-    [ObservableProperty]
-    private bool _isToastVisible;
+    [ObservableProperty] private string _toastMessage = "";
+    [ObservableProperty] private bool _isToastVisible;
 
     public ShellViewModel(
         AppState state,
         LiveTvViewModel liveVm,
         ProvidersViewModel providersVm,
         SettingsViewModel settingsVm,
-        AppEventBus bus,
-        LocalizationService loc)
+        AppEventBus bus)
     {
         _state = state;
         _liveVm = liveVm;
         _providersVm = providersVm;
         _settingsVm = settingsVm;
         _bus = bus;
-        _loc = loc;
 
         _bus.Toast += OnToast;
 
@@ -75,18 +66,19 @@ public partial class ShellViewModel : ViewModelBase
             IsToastVisible = false;
         };
 
-        // Sayfalar bir kez oluşturulur
+        // Cache pages once
         _livePage = new LiveTvPage { DataContext = _liveVm };
         _providersPage = new ProvidersPage { DataContext = _providersVm };
         _settingsPage = new SettingsPage { DataContext = _settingsVm };
 
-        var moviesTitle = _loc["Nav.Movies"];
-        var seriesTitle = _loc["Nav.Series"];
+        var moviesTitle = Loc.Svc["Nav.Movies"];
+        var seriesTitle = Loc.Svc["Nav.Series"];
 
         _moviesPage = new PlaceholderPage
         {
             DataContext = new PlaceholderPageVm(moviesTitle)
         };
+
         _seriesPage = new PlaceholderPage
         {
             DataContext = new PlaceholderPageVm(seriesTitle)

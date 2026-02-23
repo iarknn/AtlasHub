@@ -1,6 +1,9 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+﻿using System.Globalization;
+using System.Threading.Tasks;
+using AtlasHub.Localization;
 using AtlasHub.Models;
 using AtlasHub.Services;
+using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace AtlasHub.ViewModels;
 
@@ -26,10 +29,21 @@ public sealed partial class LiveChannelItemVm : ObservableObject
     public string Group => CategoryName;
 
     // Monogram + state
-    public string Monogram
-        => string.IsNullOrWhiteSpace(Name) ? "?" : Name.Trim()[0].ToString().ToUpperInvariant();
+    public string Monogram =>
+        string.IsNullOrWhiteSpace(Name)
+            ? "?"
+            : Name.Trim()[0].ToString().ToUpperInvariant();
 
     public bool HasLogo => !string.IsNullOrWhiteSpace(LogoPath);
+
+    // Next satırı lokalleşmiş prefix ile
+    public string? NextLine =>
+        string.IsNullOrWhiteSpace(NextTitle)
+            ? null
+            : string.Format(
+                CultureInfo.CurrentCulture,
+                Loc.Svc["LiveTv.Channel.NextPrefix"],
+                NextTitle);
 
     public LiveChannelItemVm(LiveChannel channel, LogoCacheService logos)
     {
@@ -67,8 +81,9 @@ public sealed partial class LiveChannelItemVm : ObservableObject
 
         if (now is not null)
         {
-            NowTitle = now.Title ?? "Program";
-            NowTimeRange = $"{now.StartUtc.ToLocalTime():HH:mm} – {now.EndUtc.ToLocalTime():HH:mm}";
+            NowTitle = now.Title ?? Loc.Svc["LiveTv.Channel.FallbackNowTitle"];
+            NowTimeRange =
+                $"{now.StartUtc.ToLocalTime():HH:mm} – {now.EndUtc.ToLocalTime():HH:mm}";
         }
         else
         {
@@ -78,11 +93,14 @@ public sealed partial class LiveChannelItemVm : ObservableObject
 
         if (next is not null)
         {
-            NextTitle = next.Title ?? "Sonraki program";
+            NextTitle = next.Title ?? Loc.Svc["LiveTv.Channel.FallbackNextTitle"];
         }
         else
         {
             NextTitle = null;
         }
+
+        // NextLine property’si değişmiş olsun
+        OnPropertyChanged(nameof(NextLine));
     }
 }

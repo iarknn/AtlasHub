@@ -1,8 +1,12 @@
-﻿using System.Collections.ObjectModel;
-using CommunityToolkit.Mvvm.ComponentModel;
-using CommunityToolkit.Mvvm.Input;
+﻿using System;
+using System.Collections.ObjectModel;
+using System.Linq;
+using System.Threading.Tasks;
+using AtlasHub.Localization;
 using AtlasHub.Models;
 using AtlasHub.Services;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 
 namespace AtlasHub.ViewModels;
 
@@ -15,7 +19,6 @@ public partial class ProvidersViewModel : ViewModelBase
     public ObservableCollection<ProviderSource> Providers { get; } = new();
 
     [ObservableProperty] private ProviderSource? _selected;
-
     [ObservableProperty] private string _newName = "";
     [ObservableProperty] private string _m3uUrl = "";
 
@@ -29,13 +32,16 @@ public partial class ProvidersViewModel : ViewModelBase
 
     [ObservableProperty] private bool _enableForProfile = true;
     [ObservableProperty] private bool _isEnabledForProfile;
-
     [ObservableProperty] private bool _isBusy;
+
     public bool IsNotBusy => !IsBusy;
 
     [ObservableProperty] private string _status = "";
 
-    public ProvidersViewModel(AppState state, ProviderService service, ProviderEpgRepository epgCfgRepo)
+    public ProvidersViewModel(
+        AppState state,
+        ProviderService service,
+        ProviderEpgRepository epgCfgRepo)
     {
         _state = state;
         _service = service;
@@ -44,7 +50,8 @@ public partial class ProvidersViewModel : ViewModelBase
         _ = ReloadAsync();
     }
 
-    partial void OnIsBusyChanged(bool value) => OnPropertyChanged(nameof(IsNotBusy));
+    partial void OnIsBusyChanged(bool value) =>
+        OnPropertyChanged(nameof(IsNotBusy));
 
     partial void OnSelectedChanged(ProviderSource? value)
     {
@@ -56,15 +63,18 @@ public partial class ProvidersViewModel : ViewModelBase
     private async Task ReloadAsync()
     {
         if (IsBusy) return;
-        IsBusy = true;
 
+        IsBusy = true;
         try
         {
             Providers.Clear();
+
             var list = await _service.GetProvidersAsync();
-            foreach (var p in list) Providers.Add(p);
+            foreach (var p in list)
+                Providers.Add(p);
 
             Selected = Providers.FirstOrDefault();
+
             await SyncSelectedEnabledAsync();
             await LoadSelectedEpgConfigAsync();
 
@@ -81,7 +91,7 @@ public partial class ProvidersViewModel : ViewModelBase
     {
         if (_state.CurrentProfile is null)
         {
-            Status = "Profil seçili değil.";
+            Status = Loc.Svc["Providers.Status.ProfileNotSelected"];
             return;
         }
 
@@ -94,8 +104,7 @@ public partial class ProvidersViewModel : ViewModelBase
                 UserAgent: string.IsNullOrWhiteSpace(UserAgent) ? null : UserAgent.Trim(),
                 Referer: string.IsNullOrWhiteSpace(Referer) ? null : Referer.Trim(),
                 Headers: null,
-                TimeoutSeconds: TimeoutSeconds
-            );
+                TimeoutSeconds: TimeoutSeconds);
 
             await _service.AddM3uProviderAsync(
                 profileId: _state.CurrentProfile.Id,
@@ -103,8 +112,7 @@ public partial class ProvidersViewModel : ViewModelBase
                 m3uUrl: M3uUrl,
                 m3uFilePath: null,
                 enableForProfile: EnableForProfile,
-                http: http
-            );
+                http: http);
 
             // yeni eklenen provider'ı bulup XMLTV config'i kaydedelim
             await ReloadAsync();
@@ -132,14 +140,14 @@ public partial class ProvidersViewModel : ViewModelBase
     private async Task SaveXmltvAsync()
     {
         if (Selected is null) return;
-
         if (IsBusy) return;
+
         IsBusy = true;
 
         try
         {
             await _epgCfgRepo.SetForProviderAsync(Selected.Id, XmltvUrl, null);
-            Status = "XMLTV kaydedildi.";
+            Status = Loc.Svc["Providers.Status.XmltvSaved"];
         }
         finally
         {
@@ -151,10 +159,9 @@ public partial class ProvidersViewModel : ViewModelBase
     private async Task DeleteSelectedAsync()
     {
         if (Selected is null) return;
-
         if (IsBusy) return;
-        IsBusy = true;
 
+        IsBusy = true;
         try
         {
             await _service.DeleteProviderAsync(Selected.Id);
@@ -170,10 +177,9 @@ public partial class ProvidersViewModel : ViewModelBase
     private async Task RefreshCatalogAsync()
     {
         if (Selected is null) return;
-
         if (IsBusy) return;
-        IsBusy = true;
 
+        IsBusy = true;
         try
         {
             await _service.RefreshCatalogAsync(Selected);
@@ -193,18 +199,22 @@ public partial class ProvidersViewModel : ViewModelBase
     {
         if (_state.CurrentProfile is null)
         {
-            Status = "Profil seçili değil.";
+            Status = Loc.Svc["Providers.Status.ProfileNotSelected"];
             return;
         }
 
         if (Selected is null) return;
-
         if (IsBusy) return;
+
         IsBusy = true;
 
         try
         {
-            await _service.SetEnabledAsync(_state.CurrentProfile.Id, Selected.Id, !IsEnabledForProfile);
+            await _service.SetEnabledAsync(
+                _state.CurrentProfile.Id,
+                Selected.Id,
+                !IsEnabledForProfile);
+
             await SyncSelectedEnabledAsync();
         }
         finally
