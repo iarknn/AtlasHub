@@ -25,7 +25,6 @@ public partial class LiveTvPage : UserControl
     private bool _isDragging;
     private Point _dragStartPoint;
     private double _dragStartOffset;
-    private bool _suppressClickAfterDrag;
     private const double DragThreshold = 6;
 
     // Timeline measurement cache
@@ -270,25 +269,40 @@ public partial class LiveTvPage : UserControl
     {
         if (TimelineScroll is null) return;
 
-        _isDragging = true;
-        _suppressClickAfterDrag = false;
-
+        // Sadece başlangıç noktasını kaydet; drag henüz başlamadı
         _dragStartPoint = e.GetPosition(TimelineScroll);
         _dragStartOffset = TimelineScroll.HorizontalOffset;
-
-        TimelineScroll.CaptureMouse();
-        e.Handled = true;
+        _isDragging = false;
+        // e.Handled = false -> Button'lar tıklama alabilsin
     }
 
     private void TimelineScroll_PreviewMouseMove(object sender, MouseEventArgs e)
     {
-        if (!_isDragging || TimelineScroll is null) return;
+        if (TimelineScroll is null) return;
+
+        // Sol tuş basılı değilse drag yok
+        if (e.LeftButton != MouseButtonState.Pressed)
+        {
+            if (_isDragging && TimelineScroll.IsMouseCaptured)
+            {
+                TimelineScroll.ReleaseMouseCapture();
+                _isDragging = false;
+            }
+            return;
+        }
 
         var current = e.GetPosition(TimelineScroll);
         var dx = current.X - _dragStartPoint.X;
 
-        if (Math.Abs(dx) >= DragThreshold)
-            _suppressClickAfterDrag = true;
+        if (!_isDragging)
+        {
+            // Drag henüz başlamadı, threshold'u geçtik mi?
+            if (Math.Abs(dx) < DragThreshold)
+                return;
+
+            _isDragging = true;
+            TimelineScroll.CaptureMouse();
+        }
 
         var target = _dragStartOffset - dx;
         target = Clamp(target, 0, TimelineScroll.ScrollableWidth);
@@ -304,18 +318,14 @@ public partial class LiveTvPage : UserControl
         if (_isDragging)
         {
             _isDragging = false;
-            TimelineScroll.ReleaseMouseCapture();
 
-            if (_suppressClickAfterDrag)
-            {
-                SnapTimelineToNearestCard();
-                e.Handled = true;
-                _suppressClickAfterDrag = false;
-                return;
-            }
+            if (TimelineScroll.IsMouseCaptured)
+                TimelineScroll.ReleaseMouseCapture();
 
-            _suppressClickAfterDrag = false;
+            SnapTimelineToNearestCard();
+            e.Handled = true;
         }
+        // Drag yoksa: click normal şekilde Button'a gider
     }
 
     private void SnapTimelineToNearestCard()
