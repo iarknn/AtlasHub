@@ -3,11 +3,12 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:loc="clr-namespace:AtlasHub.Localization"
              mc:Ignorable="d">
 
+    <!-- Bu sayfaya özel fırçalar -->
     <UserControl.Resources>
-        <!-- Varsayılan fırçalar App.xaml'den geliyor.
-             Burada sadece tonlama için ek bir yardımcı fırça tanımladım. -->
+        <!-- LiveTvPage'de kullandığımızla aynı ton -->
         <SolidColorBrush x:Key="BrushFg2" Color="#BFFFFFFF"/>
     </UserControl.Resources>
 
@@ -17,125 +18,100 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- ÜST BAR -->
+        <!-- HEADER -->
         <Border Grid.Row="0"
                 Style="{StaticResource Card}"
-                Padding="16"
+                Padding="12"
                 Margin="0,0,0,12">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
+            <StackPanel Orientation="Vertical">
+                <TextBlock Text="{loc:Loc Key=Settings.Title}"
+                           FontSize="18"
+                           FontWeight="SemiBold"
+                           Foreground="{StaticResource BrushFg1}"/>
+                <TextBlock Text="{loc:Loc Key=Settings.Subtitle}"
+                           Margin="0,4,0,0"
+                           Foreground="{StaticResource BrushFg2}"/>
+            </StackPanel>
+        </Border>
 
-                <StackPanel Grid.Column="0">
-                    <TextBlock Text="Ayarlar"
-                               FontSize="18"
+        <!-- CONTENT -->
+        <Grid Grid.Row="1">
+            <Border Style="{StaticResource Card}" Padding="16">
+                <StackPanel>
+
+                    <!-- Language section -->
+                    <TextBlock Text="{loc:Loc Key=Settings.Language.SectionTitle}"
                                FontWeight="SemiBold"
                                Foreground="{StaticResource BrushFg1}"/>
 
-                    <TextBlock Text="Dil ve uygulama tercihleri"
-                               Margin="0,4,0,0"
-                               Foreground="{StaticResource BrushFg2}"
-                               FontSize="12"/>
-                </StackPanel>
-            </Grid>
-        </Border>
-
-        <!-- ANA İÇERİK -->
-        <Border Grid.Row="1"
-                Style="{StaticResource Card}"
-                Padding="16">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
-
-                <!-- Dil Bölümü Başlık -->
-                <StackPanel Grid.Row="0">
-                    <TextBlock Text="Dil"
-                               FontWeight="SemiBold"
-                               Foreground="{StaticResource BrushFg1}"
-                               FontSize="14"/>
-
-                    <TextBlock Text="Atlas Hub varsayılan olarak Türkçe gelir. Diğer diller topluluk tarafından dil paketi olarak eklenebilir."
-                               Margin="0,6,0,0"
+                    <TextBlock Text="{loc:Loc Key=Settings.Language.SectionDescription}"
                                TextWrapping="Wrap"
-                               Foreground="{StaticResource BrushFg2}"
-                               FontSize="12"/>
-                </StackPanel>
+                               Margin="0,4,0,10"
+                               Foreground="{StaticResource BrushFg2}"/>
 
-                <!-- Dil Seçimi + Butonlar -->
-                <Grid Grid.Row="1" Margin="0,16,0,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
+                    <Grid Margin="0,4,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="220"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
 
-                    <!-- Dil combobox -->
-                    <ComboBox Grid.Column="0"
-                              ItemsSource="{Binding Languages}"
-                              SelectedItem="{Binding SelectedLanguage}"
-                              DisplayMemberPath="DisplayName"
-                              Height="34"
-                              VerticalAlignment="Center"/>
-
-                    <!-- Yenile -->
-                    <Button Grid.Column="1"
-                            Content="Dilleri Yenile"
-                            Command="{Binding ReloadLanguagesCommand}"
-                            Height="34"
-                            Margin="10,0,0,0"
-                            Padding="14,0"
-                            VerticalAlignment="Center"/>
-
-                    <!-- Uygula -->
-                    <Button Grid.Column="2"
-                            Content="Uygula"
-                            Command="{Binding ApplyLanguageCommand}"
-                            Height="34"
-                            Margin="10,0,0,0"
-                            Padding="20,0"
-                            VerticalAlignment="Center"/>
-                </Grid>
-
-                <!-- Bilgi kartı -->
-                <Border Grid.Row="2"
-                        Margin="0,20,0,0"
-                        Padding="12"
-                        CornerRadius="8"
-                        Background="#0C0C14"
-                        BorderBrush="#22FFFFFF"
-                        BorderThickness="1">
-                    <StackPanel>
-                        <TextBlock Text="Topluluk Dil Paketleri"
-                                   FontWeight="SemiBold"
+                        <TextBlock Grid.Column="0"
+                                   Text="{loc:Loc Key=Settings.Language.Label}"
+                                   VerticalAlignment="Center"
                                    Foreground="{StaticResource BrushFg1}"
-                                   FontSize="13"/>
+                                   Margin="0,0,8,0"/>
 
-                        <TextBlock Text="Ek diller için JSON tabanlı dil paketleri kullanılır."
-                                   Margin="0,6,0,0"
-                                   Foreground="{StaticResource BrushFg2}"
-                                   FontSize="12"
-                                   TextWrapping="Wrap"/>
+                        <ComboBox Grid.Column="1"
+                                  ItemsSource="{Binding Languages}"
+                                  SelectedItem="{Binding SelectedLanguage}"
+                                  DisplayMemberPath="DisplayName"
+                                  Height="32"
+                                  VerticalAlignment="Center"/>
 
-                        <TextBlock Text="%AppData%\AtlasHub\lang\*.json"
-                                   Margin="0,4,0,0"
-                                   Foreground="{StaticResource BrushFg2}"
-                                   FontSize="12"
-                                   FontFamily="Consolas, Courier New, monospace"/>
+                        <Button Grid.Column="2"
+                                Content="{loc:Loc Key=Settings.Language.Reload}"
+                                Margin="8,0,0,0"
+                                Padding="12,0"
+                                Height="32"
+                                Command="{Binding ReloadLanguagesCommand}"/>
 
-                        <TextBlock Text="Bu klasöre culture adında dosyalar ekleyebilirsiniz: örn. en-US.json"
-                                   Margin="0,6,0,0"
-                                   Foreground="{StaticResource BrushFg2}"
-                                   FontSize="12"
-                                   TextWrapping="Wrap"/>
-                    </StackPanel>
-                </Border>
-            </Grid>
-        </Border>
+                        <Button Grid.Column="3"
+                                Content="{loc:Loc Key=Settings.Language.Apply}"
+                                Margin="8,0,0,0"
+                                Padding="12,0"
+                                Height="32"
+                                Command="{Binding ApplyLanguageCommand}"/>
+                    </Grid>
+
+                    <!-- Community info -->
+                    <Border Margin="0,16,0,0"
+                            Padding="10"
+                            CornerRadius="8"
+                            Background="#10101A"
+                            BorderBrush="#22FFFFFF"
+                            BorderThickness="1">
+                        <StackPanel>
+                            <TextBlock Text="{loc:Loc Key=Settings.Language.CommunityTitle}"
+                                       FontWeight="SemiBold"
+                                       Foreground="{StaticResource BrushFg1}"/>
+
+                            <TextBlock Text="{loc:Loc Key=Settings.Language.CommunityDescription}"
+                                       Margin="0,4,0,0"
+                                       TextWrapping="Wrap"
+                                       Foreground="{StaticResource BrushFg2}"/>
+
+                            <TextBlock Text="{loc:Loc Key=Settings.Language.CommunityPath}"
+                                       Margin="0,6,0,0"
+                                       FontFamily="Consolas"
+                                       FontSize="12"
+                                       Foreground="{StaticResource BrushFg2}"/>
+                        </StackPanel>
+                    </Border>
+
+                </StackPanel>
+            </Border>
+        </Grid>
     </Grid>
 </UserControl>

@@ -1,5 +1,6 @@
 ﻿using System.Collections.ObjectModel;
 using System.Globalization;
+using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using AtlasHub.Localization;
@@ -16,17 +17,24 @@ public partial class SettingsViewModel : ViewModelBase
 
     public ObservableCollection<LanguageOption> Languages { get; } = new();
 
-    [ObservableProperty] private LanguageOption? _selectedLanguage;
+    [ObservableProperty]
+    private LanguageOption? _selectedLanguage;
 
-    public SettingsViewModel(SettingsService settings, LocalizationService loc, LanguagePackRepository packs)
+    public SettingsViewModel(
+        SettingsService settings,
+        LocalizationService loc,
+        LanguagePackRepository packs)
     {
         _settings = settings;
         _loc = loc;
         _packs = packs;
 
         ReloadLanguages();
-        SelectedLanguage = Languages.FirstOrDefault(l => l.CultureName.Equals(_settings.Current.CultureName, StringComparison.OrdinalIgnoreCase))
-                           ?? Languages.FirstOrDefault();
+
+        SelectedLanguage =
+            Languages.FirstOrDefault(l =>
+                l.CultureName.Equals(_settings.Current.CultureName, StringComparison.OrdinalIgnoreCase))
+            ?? Languages.FirstOrDefault();
     }
 
     [RelayCommand]
@@ -50,10 +58,12 @@ public partial class SettingsViewModel : ViewModelBase
     [RelayCommand]
     private void ApplyLanguage()
     {
-        if (SelectedLanguage is null) return;
+        if (SelectedLanguage is null)
+            return;
 
         _settings.SetCulture(SelectedLanguage.CultureName);
         _packs.ClearCache();
+
         _loc.SetCulture(new CultureInfo(SelectedLanguage.CultureName));
     }
 }
