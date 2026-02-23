@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Globalization;
-using AtlasHub.Services;
 
 namespace AtlasHub.Localization;
 
@@ -11,7 +10,8 @@ public sealed class LocalizationService : INotifyPropertyChanged
     private readonly LanguagePackRepository _packs;
 
     // Aktif birleşik sözlük (built-in + JSON pack override)
-    private Dictionary<string, string> _current = new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<string, string> _current =
+        new(StringComparer.OrdinalIgnoreCase);
 
     // Built-in TR / EN string’leri
     private static readonly Dictionary<string, string> BuiltInTr = BuildTr();
@@ -28,7 +28,7 @@ public sealed class LocalizationService : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// XAML'de {loc Some.Key} => Loc.Svc["Some.Key"]
+    /// XAML'de {loc:Loc Key=Some.Key} => Loc.Svc["Some.Key"]
     /// </summary>
     public string this[string key]
     {
@@ -47,8 +47,11 @@ public sealed class LocalizationService : INotifyPropertyChanged
     {
         if (culture is null) throw new ArgumentNullException(nameof(culture));
 
-        if (string.Equals(CurrentCulture.Name, culture.Name, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(CurrentCulture.Name, culture.Name,
+                StringComparison.OrdinalIgnoreCase))
+        {
             return;
+        }
 
         CurrentCulture = culture;
         Rebuild();
@@ -57,12 +60,15 @@ public sealed class LocalizationService : INotifyPropertyChanged
     // -------------------
     // İç mantık
     // -------------------
+
     private void Rebuild()
     {
         var baseDict = GetBuiltIn(CurrentCulture);
 
         // Built-in kopyası
-        var merged = new Dictionary<string, string>(baseDict, StringComparer.OrdinalIgnoreCase);
+        var merged = new Dictionary<string, string>(
+            baseDict,
+            StringComparer.OrdinalIgnoreCase);
 
         // JSON language pack override (varsa)
         var pack = _packs.Load(CurrentCulture);
@@ -91,27 +97,33 @@ public sealed class LocalizationService : INotifyPropertyChanged
     private void RaiseAllChanged()
     {
         // Culture değiştiğini bildir
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CurrentCulture)));
+        PropertyChanged?.Invoke(this,
+            new PropertyChangedEventArgs(nameof(CurrentCulture)));
 
         // Indexer bindingleri için WPF konvansiyonu: "Item[]"
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs("Item[]"));
+        PropertyChanged?.Invoke(this,
+            new PropertyChangedEventArgs("Item[]"));
     }
 
     // -------------------
     // Built-in sözlükler
     // -------------------
+
     private static Dictionary<string, string> BuildTr()
     {
         var d = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
-            // App / Nav (ileride nav için kullanacağız)
+            // App / Nav
             ["App.Title"] = "Atlas Hub",
+
             ["Nav.LiveTv"] = "Canlı TV",
             ["Nav.Movies"] = "Filmler",
             ["Nav.Series"] = "Diziler",
             ["Nav.Sources"] = "Kaynaklar",
             ["Nav.Settings"] = "Ayarlar",
-            ["Nav.SprintStatus"] = "Sprint 1: Live TV + Kaynaklar",
+
+            ["Nav.StatusHeader"] = "Durum",
+            ["Nav.SprintStatus"] = "Sprint 1: Live",
 
             // Settings page
             ["Settings.Title"] = "Ayarlar",
@@ -128,7 +140,8 @@ public sealed class LocalizationService : INotifyPropertyChanged
             ["Settings.Language.CommunityTitle"] = "Topluluk dil paketleri",
             ["Settings.Language.CommunityDescription"] =
                 "Ek diller JSON tabanlı dil paketleri ile eklenir.",
-            ["Settings.Language.CommunityPath"] = @"%AppData%\AtlasHub\lang\*.json",
+            ["Settings.Language.CommunityPath"] =
+                @"%AppData%\AtlasHub\lang\*.json",
         };
 
         return d;
@@ -140,12 +153,15 @@ public sealed class LocalizationService : INotifyPropertyChanged
         {
             // App / Nav
             ["App.Title"] = "Atlas Hub",
+
             ["Nav.LiveTv"] = "Live TV",
             ["Nav.Movies"] = "Movies",
             ["Nav.Series"] = "Series",
             ["Nav.Sources"] = "Sources",
             ["Nav.Settings"] = "Settings",
-            ["Nav.SprintStatus"] = "Sprint 1: Live TV + Sources",
+
+            ["Nav.StatusHeader"] = "Status",
+            ["Nav.SprintStatus"] = "Sprint 1: Live",
 
             // Settings page
             ["Settings.Title"] = "Settings",
@@ -162,7 +178,8 @@ public sealed class LocalizationService : INotifyPropertyChanged
             ["Settings.Language.CommunityTitle"] = "Community language packs",
             ["Settings.Language.CommunityDescription"] =
                 "Additional languages are provided as JSON-based language packs.",
-            ["Settings.Language.CommunityPath"] = @"%AppData%\AtlasHub\lang\*.json",
+            ["Settings.Language.CommunityPath"] =
+                @"%AppData%\AtlasHub\lang\*.json",
         };
 
         return d;
