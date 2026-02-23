@@ -32,6 +32,7 @@ public sealed class EpgService
         if (!index.ByRaw.TryGetValue(resolvedChannelId, out var list) || list.Count == 0)
             return (null, null);
 
+        // list zaten kanal bazında strict dedup edilmiş durumda
         return PickNowNext(list, nowUtc);
     }
 
@@ -66,8 +67,9 @@ public sealed class EpgService
         if (!index.ByRaw.TryGetValue(resolvedChannelId, out var list) || list.Count == 0)
             return Array.Empty<EpgProgram>();
 
-        // list sorted. Window filter.
-        var windowed = new List<EpgProgram>(256);
+        // list sorted & kanal bazında zaten strict dedup edilmiş.
+        // Yine de pencere içinde çalışmak için filtriyoruz.
+        var windowed = new List<EpgProgram>(capacity: 256);
         foreach (var p in list)
         {
             if (p.EndUtc <= from) continue;
@@ -75,7 +77,7 @@ public sealed class EpgService
             windowed.Add(p);
         }
 
-        // ✅ SAFE dedup: yine strict ama hafif zaman farklarına toleranslı
+        // İkinci bir dedup idempotent; ama pencerede kalanlar için de güvenli.
         return DedupTimelineProgramsStrict(windowed);
     }
 
@@ -162,8 +164,16 @@ public sealed class EpgService
             listRaw.Add(p);
         }
 
-        foreach (var kv in byRaw)
-            kv.Value.Sort(static (a, b) => a.StartUtc.CompareTo(b.StartUtc));
+        // Kanal bazında sort + strict dedup
+        var keys = byRaw.Keys.ToList();
+        foreach (var key in keys)
+        {
+            var list = byRaw[key];
+            list.Sort(static (a, b) => a.StartUtc.CompareTo(b.StartUtc));
+
+            var deduped = DedupTimelineProgramsStrict(list);
+            byRaw[key] = deduped;
+        }
 
         // display-name index (normalized display-name -> channelId)
         var byDisplayNameNorm = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -217,7 +227,7 @@ public sealed class EpgService
 
     private static string? ResolveBestChannelId(EpgIndex index, LiveChannel channel)
     {
-        var rawCandidates = new List<string>(8);
+        var rawCandidates = new List<string>(capacity: 8);
 
         if (!string.IsNullOrWhiteSpace(channel.TvgId))
         {
@@ -332,7 +342,7 @@ public sealed class EpgService
     }
 
     // ------------------------------------------------------------
-    // Timeline dedup (STRICT ama tolere edici)
+    // Timeline dedup (STRICT ama toleranslı)
     // ------------------------------------------------------------
 
     /// <summary>
@@ -347,7 +357,6 @@ public sealed class EpgService
         programs.Sort(static (a, b) => a.StartUtc.CompareTo(b.StartUtc));
 
         var result = new List<EpgProgram>(programs.Count);
-
         EpgProgram? last = null;
 
         foreach (var p in programs)
@@ -396,10 +405,11 @@ public sealed class EpgService
                 startDiff <= TimeSpan.FromMinutes(2) &&
                 endDiff <= TimeSpan.FromMinutes(2);
 
-            bool heavilyOverlapping = overlap > TimeSpan.Zero &&
-                                      lenLast > TimeSpan.Zero &&
-                                      lenCurr > TimeSpan.Zero &&
-                                      overlap.TotalMinutes / Math.Min(lenLast.TotalMinutes, lenCurr.TotalMinutes) >= 0.8;
+            bool heavilyOverlapping =
+                overlap > TimeSpan.Zero &&
+                lenLast > TimeSpan.Zero &&
+                lenCurr > TimeSpan.Zero &&
+                overlap.TotalMinutes / Math.Min(lenLast.TotalMinutes, lenCurr.TotalMinutes) >= 0.8;
 
             // Eğer başlık aynı ve zamanlar neredeyse aynı / yoğun overlap varsa "duplicate" say
             if (nearlySameTimes || heavilyOverlapping)
