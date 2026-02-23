@@ -5,8 +5,9 @@ namespace AtlasHub.Localization;
 public static class Loc
 {
     /// <summary>
-    /// XAML'de {loc Key} => Loc.Svc["Key"]
+    /// XAML ve C# tarafında tek giriş noktası:
+    /// Loc.Svc["Key"]
     /// </summary>
-    public static LocalizationService Svc =>
-        App.Services.GetRequiredService<LocalizationService>();
+    public static LocalizationService Svc
+        => App.Services.GetRequiredService<LocalizationService>();
 }

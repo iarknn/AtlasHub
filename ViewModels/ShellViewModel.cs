@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Runtime.Versioning;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
@@ -10,6 +11,7 @@ using CommunityToolkit.Mvvm.Input;
 
 namespace AtlasHub.ViewModels;
 
+[SupportedOSPlatform("windows7.0")]
 public partial class ShellViewModel : ViewModelBase
 {
     private readonly AppState _state;

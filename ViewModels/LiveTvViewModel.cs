@@ -24,7 +24,7 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
     private readonly AppEventBus _bus;
 
     // Katalog ve EPG cache
-    private Dictionary<string, ProviderCatalog> _catalogs =
+    private Dictionary<string, CatalogSnapshot> _catalogs =
         new(StringComparer.OrdinalIgnoreCase);
 
     private readonly Dictionary<string, EpgSnapshot?> _epgCache =
@@ -39,6 +39,7 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
     [ObservableProperty] private string? _selectedCategory;
     [ObservableProperty] private LiveChannelItemVm? _selectedChannel;
     [ObservableProperty] private EpgTimelineItemVm? _selectedTimelineItem;
+
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private string _statusText = string.Empty;
 
@@ -139,7 +140,9 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
             IsBusy = true;
             StatusText = Loc.Svc["LiveTv.Status.Loading"];
 
-            var (scopes, catalogs) = await _liveTv.LoadForProfileAsync(_state.CurrentProfile.Id);
+            var (scopes, catalogs) =
+                await _liveTv.LoadForProfileAsync(_state.CurrentProfile.Id);
+
             _catalogs = catalogs;
             _epgCache.Clear();
 
@@ -189,7 +192,8 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
     // Selection change hooks
     // -----------------------
 
-    partial void OnSelectedScopeChanged(ProviderScope? value) => BuildCategories();
+    partial void OnSelectedScopeChanged(ProviderScope? value)
+        => BuildCategories();
 
     partial void OnSelectedCategoryChanged(string? value)
     {
@@ -218,7 +222,7 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
         }
         catch
         {
-            // native taraf bazen exception atabilir; UI kilitlenmesin
+            // native player bazen exception atabilir; UI kilitlenmesin
         }
 
         await LoadTimelineForSelectedChannelAsync();
@@ -234,6 +238,7 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
         Categories.Clear();
         Channels.Clear();
         Timeline.Clear();
+
         SelectedCategory = null;
         SelectedChannel = null;
         SelectedTimelineItem = null;
@@ -241,7 +246,10 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
 
         if (SelectedScope is null) return;
 
-        var names = LiveTvService.BuildCategoryNames(SelectedScope.Key, _catalogs);
+        var names = LiveTvService.BuildCategoryNames(
+            SelectedScope.Key,
+            _catalogs);
+
         foreach (var n in names)
             Categories.Add(n);
 
@@ -256,10 +264,15 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
         SelectedTimelineItem = null;
         SelectedProgramProgress = 0;
 
-        if (SelectedScope is null || string.IsNullOrWhiteSpace(SelectedCategory))
+        if (SelectedScope is null ||
+            string.IsNullOrWhiteSpace(SelectedCategory))
             return;
 
-        var channels = LiveTvService.BuildChannels(SelectedScope.Key, SelectedCategory!, _catalogs);
+        var channels = LiveTvService.BuildChannels(
+            SelectedScope.Key,
+            SelectedCategory!,
+            _catalogs);
+
         foreach (var ch in channels)
             Channels.Add(new LiveChannelItemVm(ch, _logos));
 
@@ -279,7 +292,8 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
         foreach (var chVm in Channels)
         {
             var providerId = chVm.Channel.ProviderId;
-            if (string.IsNullOrWhiteSpace(providerId)) continue;
+            if (string.IsNullOrWhiteSpace(providerId))
+                continue;
 
             if (!_epgCache.TryGetValue(providerId, out var snap))
             {
@@ -311,7 +325,11 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
         SelectedTimelineItem = null;
         SelectedProgramProgress = 0;
 
-        if (SelectedChannel is null) return;
+        if (SelectedChannel is null)
+        {
+            OnPropertyChanged(nameof(HasSelectedProgram));
+            return;
+        }
 
         try
         {
@@ -339,6 +357,7 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
                 futureWindow: TimeSpan.FromHours(6));
 
             var items = DeduplicateTimelineItems(rawItems);
+
             if (items.Count == 0)
             {
                 OnPropertyChanged(nameof(HasSelectedProgram));
@@ -365,8 +384,8 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
                 Timeline.Add(vm);
             }
 
-            var nowItem = Timeline.FirstOrDefault(x => x.IsNow) ??
-                          Timeline.FirstOrDefault();
+            var nowItem = Timeline.FirstOrDefault(x => x.IsNow)
+                          ?? Timeline.FirstOrDefault();
 
             if (nowItem is not null)
                 SelectTimelineItem(nowItem);
@@ -387,16 +406,16 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
         DeduplicateTimelineItems(
             IReadOnlyList<(EpgProgram program, bool isNow, int progress)> items)
     {
-        if (items.Count == 0) return items;
+        if (items.Count == 0)
+            return items;
 
-        var grouped = items
-            .GroupBy(x => new
-            {
-                x.program.ChannelId,
-                x.program.StartUtc,
-                x.program.EndUtc,
-                Title = NormalizeTitle(x.program.Title)
-            });
+        var grouped = items.GroupBy(x => new
+        {
+            x.program.ChannelId,
+            x.program.StartUtc,
+            x.program.EndUtc,
+            Title = NormalizeTitle(x.program.Title)
+        });
 
         var result = new List<(EpgProgram program, bool isNow, int progress)>();
 
@@ -414,16 +433,20 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
         }
 
         // Zaman sırasına göre
-        result.Sort((a, b) => a.program.StartUtc.CompareTo(b.program.StartUtc));
+        result.Sort((a, b) =>
+            a.program.StartUtc.CompareTo(b.program.StartUtc));
+
         return result;
     }
 
     private static string NormalizeTitle(string? title)
     {
-        if (string.IsNullOrWhiteSpace(title)) return string.Empty;
+        if (string.IsNullOrWhiteSpace(title))
+            return string.Empty;
 
         var s = title.Trim();
 
+        // basit whitespace collapse
         while (s.Contains("  ", StringComparison.Ordinal))
             s = s.Replace("  ", " ", StringComparison.Ordinal);
 
@@ -436,8 +459,11 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
 
     private void OnTickerTick()
     {
-        if (SelectedChannel is null) return;
-        if (Timeline.Count == 0) return;
+        if (SelectedChannel is null)
+            return;
+
+        if (Timeline.Count == 0)
+            return;
 
         var nowLocal = DateTimeOffset.Now;
         var nowUtc = DateTimeOffset.UtcNow;
@@ -455,8 +481,8 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
 
         if (selected is null || selectedEnded)
         {
-            var nowItem = Timeline.FirstOrDefault(i => i.IsNow) ??
-                          Timeline.FirstOrDefault();
+            var nowItem = Timeline.FirstOrDefault(i => i.IsNow)
+                          ?? Timeline.FirstOrDefault();
 
             if (nowItem is not null)
                 SelectTimelineItem(nowItem);

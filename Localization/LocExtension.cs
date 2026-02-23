@@ -22,13 +22,11 @@ public sealed class LocExtension : MarkupExtension
 
     public override object ProvideValue(IServiceProvider serviceProvider)
     {
-        // Designer'da DI container yok; sadece key'i göster
+        // Designer'da DI container yok; en azından key görünsün
         if (DesignerProperties.GetIsInDesignMode(new DependencyObject()))
-        {
             return Key;
-        }
 
-        // Runtime'da LocalizationService indexer'ına OneWay binding
+        // Runtime: LocalizationService indexer'ına OneWay binding
         var binding = new Binding($"[{Key}]")
         {
             Source = Loc.Svc,
