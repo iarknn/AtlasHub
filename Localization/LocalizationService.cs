@@ -184,7 +184,34 @@ public sealed class LocalizationService : INotifyPropertyChanged
 
             // Providers – durum metinleri
             ["Providers.Status.ProfileNotSelected"] = "Profil seçili değil.",
-            ["Providers.Status.XmltvSaved"] = "XMLTV kaydedildi."
+            ["Providers.Status.XmltvSaved"] = "XMLTV kaydedildi.",
+
+            // Providers – UI
+            ["Providers.Title"] = "Kaynaklar",
+            ["Providers.Subtitle"] = "M3U ve EPG sağlayıcılarını yönet",
+
+            ["Providers.List.Header"] = "Sağlayıcılar",
+            ["Providers.List.Empty"] = "Henüz kaynak eklenmemiş.",
+
+            ["Providers.Add.SectionTitle"] = "Yeni M3U kaynağı ekle",
+            ["Providers.Add.NameLabel"] = "Görünen ad",
+            ["Providers.Add.M3uUrlLabel"] = "M3U URL",
+            ["Providers.Add.EnableForProfileLabel"] = "Bu profil için etkin",
+            ["Providers.Add.AddButton"] = "Kaynak ekle",
+
+            ["Providers.Epg.SectionTitle"] = "EPG (XMLTV)",
+            ["Providers.Epg.XmltvUrlLabel"] = "XMLTV URL",
+            ["Providers.Epg.SaveButton"] = "EPG ayarını kaydet",
+
+            ["Providers.Http.SectionTitle"] = "Gelişmiş HTTP ayarları",
+            ["Providers.Http.UserAgentLabel"] = "User-Agent",
+            ["Providers.Http.RefererLabel"] = "Referer",
+            ["Providers.Http.TimeoutLabel"] = "Timeout (sn)",
+
+            ["Providers.Selected.SectionTitle"] = "Seçili kaynak",
+            ["Providers.Selected.EnabledForProfileLabel"] = "Bu profil için etkin",
+            ["Providers.Selected.RefreshCatalogButton"] = "Kanal listesini yenile",
+            ["Providers.Selected.DeleteButton"] = "Bu kaynağı sil"
         };
 
         return d;

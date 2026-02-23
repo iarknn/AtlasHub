@@ -19,10 +19,11 @@ public partial class ProvidersViewModel : ViewModelBase
     public ObservableCollection<ProviderSource> Providers { get; } = new();
 
     [ObservableProperty] private ProviderSource? _selected;
+
     [ObservableProperty] private string _newName = "";
     [ObservableProperty] private string _m3uUrl = "";
 
-    // NEW: XMLTV
+    // XMLTV
     [ObservableProperty] private string _xmltvUrl = "";
 
     // HTTP
@@ -32,8 +33,8 @@ public partial class ProvidersViewModel : ViewModelBase
 
     [ObservableProperty] private bool _enableForProfile = true;
     [ObservableProperty] private bool _isEnabledForProfile;
-    [ObservableProperty] private bool _isBusy;
 
+    [ObservableProperty] private bool _isBusy;
     public bool IsNotBusy => !IsBusy;
 
     [ObservableProperty] private string _status = "";
@@ -50,14 +51,18 @@ public partial class ProvidersViewModel : ViewModelBase
         _ = ReloadAsync();
     }
 
-    partial void OnIsBusyChanged(bool value) =>
-        OnPropertyChanged(nameof(IsNotBusy));
+    partial void OnIsBusyChanged(bool value)
+        => OnPropertyChanged(nameof(IsNotBusy));
 
     partial void OnSelectedChanged(ProviderSource? value)
     {
         _ = SyncSelectedEnabledAsync();
         _ = LoadSelectedEpgConfigAsync();
     }
+
+    // -----------------------
+    // Commands
+    // -----------------------
 
     [RelayCommand]
     private async Task ReloadAsync()
@@ -78,7 +83,7 @@ public partial class ProvidersViewModel : ViewModelBase
             await SyncSelectedEnabledAsync();
             await LoadSelectedEpgConfigAsync();
 
-            Status = "";
+            Status = string.Empty;
         }
         finally
         {
@@ -96,15 +101,20 @@ public partial class ProvidersViewModel : ViewModelBase
         }
 
         if (IsBusy) return;
-        IsBusy = true;
 
+        IsBusy = true;
         try
         {
             var http = new ProviderHttpConfig(
-                UserAgent: string.IsNullOrWhiteSpace(UserAgent) ? null : UserAgent.Trim(),
-                Referer: string.IsNullOrWhiteSpace(Referer) ? null : Referer.Trim(),
+                UserAgent: string.IsNullOrWhiteSpace(UserAgent)
+                    ? null
+                    : UserAgent.Trim(),
+                Referer: string.IsNullOrWhiteSpace(Referer)
+                    ? null
+                    : Referer.Trim(),
                 Headers: null,
-                TimeoutSeconds: TimeoutSeconds);
+                TimeoutSeconds: TimeoutSeconds
+            );
 
             await _service.AddM3uProviderAsync(
                 profileId: _state.CurrentProfile.Id,
@@ -114,12 +124,15 @@ public partial class ProvidersViewModel : ViewModelBase
                 enableForProfile: EnableForProfile,
                 http: http);
 
-            // yeni eklenen provider'ı bulup XMLTV config'i kaydedelim
+            // yeniden yükle, yeni provider seçili olsun
             await ReloadAsync();
 
             if (Selected is not null)
             {
-                await _epgCfgRepo.SetForProviderAsync(Selected.Id, XmltvUrl, null);
+                await _epgCfgRepo.SetForProviderAsync(
+                    Selected.Id,
+                    XmltvUrl,
+                    null);
             }
 
             NewName = "";
@@ -143,10 +156,13 @@ public partial class ProvidersViewModel : ViewModelBase
         if (IsBusy) return;
 
         IsBusy = true;
-
         try
         {
-            await _epgCfgRepo.SetForProviderAsync(Selected.Id, XmltvUrl, null);
+            await _epgCfgRepo.SetForProviderAsync(
+                Selected.Id,
+                XmltvUrl,
+                null);
+
             Status = Loc.Svc["Providers.Status.XmltvSaved"];
         }
         finally
@@ -207,7 +223,6 @@ public partial class ProvidersViewModel : ViewModelBase
         if (IsBusy) return;
 
         IsBusy = true;
-
         try
         {
             await _service.SetEnabledAsync(
@@ -222,6 +237,10 @@ public partial class ProvidersViewModel : ViewModelBase
             IsBusy = false;
         }
     }
+
+    // -----------------------
+    // Internal helpers
+    // -----------------------
 
     private async Task SyncSelectedEnabledAsync()
     {

@@ -1,119 +1,328 @@
 ﻿<UserControl x:Class="AtlasHub.Views.Pages.ProvidersPage"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:loc="clr-namespace:AtlasHub.Localization"
+             mc:Ignorable="d">
+
+    <UserControl.Resources>
+        <SolidColorBrush x:Key="BrushFg2" Color="#BFFFFFFF" />
+    </UserControl.Resources>
 
     <Grid>
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*"/>
-            <ColumnDefinition Width="440"/>
-        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
 
-        <!-- Left -->
-        <Border Style="{StaticResource Card}" Padding="16" Margin="0,0,16,0">
-            <DockPanel>
-                <StackPanel DockPanel.Dock="Top">
-                    <TextBlock Text="{DynamicResource sources.title}" FontSize="26" FontWeight="SemiBold"/>
+        <!-- TOP BAR -->
+        <Border Grid.Row="0"
+                Style="{StaticResource Card}"
+                Padding="12"
+                Margin="0,0,0,12">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
 
-                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                        <Button Content="{DynamicResource sources.reload}"
-                                Command="{Binding ReloadCommand}"
-                                IsEnabled="{Binding IsNotBusy}"
-                                Margin="0,0,10,0"/>
-                        <Button Content="{DynamicResource sources.refresh}"
-                                Command="{Binding RefreshCatalogCommand}"
-                                IsEnabled="{Binding IsNotBusy}"/>
-                    </StackPanel>
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="{loc:Loc Key=Providers.Title}"
+                               FontSize="18"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource BrushFg1}"/>
+
+                    <TextBlock Text="{loc:Loc Key=Providers.Subtitle}"
+                               Foreground="{StaticResource BrushFg2}"
+                               FontSize="12"
+                               Margin="0,4,0,0"/>
                 </StackPanel>
 
-                <ListBox ItemsSource="{Binding Providers}"
-                         SelectedItem="{Binding Selected}"
-                         Margin="0,14,0,0">
-                    <ListBox.ItemTemplate>
-                        <DataTemplate>
-                            <StackPanel>
-                                <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="SemiBold"/>
-                                <TextBlock Text="{Binding Type}" Foreground="{StaticResource BrushFg1}" FontSize="12"/>
-                            </StackPanel>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
-
-                <StackPanel DockPanel.Dock="Bottom" Margin="0,12,0,0">
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                        <Button Content="{DynamicResource sources.toggle}"
-                                Command="{Binding ToggleEnabledCommand}"
-                                IsEnabled="{Binding IsNotBusy}"
-                                Margin="0,0,10,0"/>
-                        <Button Content="{DynamicResource sources.delete}"
-                                Command="{Binding DeleteSelectedCommand}"
-                                IsEnabled="{Binding IsNotBusy}"/>
-                    </StackPanel>
-
-                    <CheckBox Content="{DynamicResource sources.enabled}"
-                              IsChecked="{Binding IsEnabledForProfile}"
-                              IsEnabled="False"
-                              Margin="0,10,0,0"/>
-
-                    <TextBlock Text="{Binding Status}"
-                               Foreground="{StaticResource BrushFg1}"
-                               Margin="0,10,0,0"
-                               TextWrapping="Wrap"/>
-                </StackPanel>
-            </DockPanel>
+                <Button Grid.Column="1"
+                        Content="{loc:Loc Key=Settings.Language.Reload}"
+                        Command="{Binding ReloadCommand}"
+                        Height="32"
+                        Padding="14,0"
+                        VerticalAlignment="Center"/>
+            </Grid>
         </Border>
 
-        <!-- Right -->
-        <Border Grid.Column="1" Style="{StaticResource Card}" Padding="16">
-            <ScrollViewer VerticalScrollBarVisibility="Auto">
-                <StackPanel>
-                    <TextBlock Text="{DynamicResource sources.add}" FontSize="18" FontWeight="SemiBold"/>
+        <!-- MAIN -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="260"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
 
-                    <TextBlock Text="{DynamicResource sources.name}"
-                               Margin="0,14,0,6"
-                               Foreground="{StaticResource BrushFg1}"/>
-                    <TextBox Text="{Binding NewName, UpdateSourceTrigger=PropertyChanged}"/>
+            <!-- Provider list -->
+            <Border Grid.Column="0"
+                    Style="{StaticResource Card}"
+                    Padding="12"
+                    Margin="0,0,10,0">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top"
+                               Text="{loc:Loc Key=Providers.List.Header}"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource BrushFg1}"
+                               Margin="0,0,0,10"/>
 
-                    <TextBlock Text="{DynamicResource sources.m3u.url}"
-                               Margin="0,14,0,6"
-                               Foreground="{StaticResource BrushFg1}"/>
-                    <TextBox Text="{Binding M3uUrl, UpdateSourceTrigger=PropertyChanged}"/>
+                    <ListBox ItemsSource="{Binding Providers}"
+                             SelectedItem="{Binding Selected}"
+                             BorderThickness="0"
+                             Background="Transparent">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border Padding="8"
+                                        Margin="0,0,0,6"
+                                        CornerRadius="8"
+                                        Background="#131321">
+                                    <TextBlock Text="{Binding Name}"
+                                               Foreground="{StaticResource BrushFg1}"/>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
 
-                    <TextBlock Text="{DynamicResource sources.xmltv.url}"
-                               Margin="0,14,0,6"
-                               Foreground="{StaticResource BrushFg1}"/>
-                    <TextBox Text="{Binding XmltvUrl, UpdateSourceTrigger=PropertyChanged}"/>
+                    <!-- Liste boşken gösterilen küçük hint -->
+                    <TextBlock DockPanel.Dock="Bottom"
+                               Margin="0,8,0,0"
+                               Foreground="{StaticResource BrushFg2}"
+                               FontSize="11"
+                               Text="{loc:Loc Key=Providers.List.Empty}"
+                               TextWrapping="Wrap">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <!-- Varsayılan: gizli -->
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <!-- Providers.Count == 0 ise görünür yap -->
+                                    <DataTrigger Binding="{Binding Providers.Count}"
+                                                 Value="0">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </DockPanel>
+            </Border>
 
-                    <Button Content="{DynamicResource sources.xmltv.save}"
-                            Command="{Binding SaveXmltvCommand}"
-                            IsEnabled="{Binding IsNotBusy}"
-                            Margin="0,10,0,0"/>
+            <!-- Right side: add + EPG + HTTP -->
+            <StackPanel Grid.Column="1" Orientation="Vertical">
+                <!-- Add M3U -->
+                <Border Style="{StaticResource Card}"
+                        Padding="12"
+                        Margin="0,0,0,10">
+                    <StackPanel>
+                        <TextBlock Text="{loc:Loc Key=Providers.Add.SectionTitle}"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource BrushFg1}"/>
 
-                    <TextBlock Text="{DynamicResource sources.http.useragent}"
-                               Margin="0,14,0,6"
-                               Foreground="{StaticResource BrushFg1}"/>
-                    <TextBox Text="{Binding UserAgent, UpdateSourceTrigger=PropertyChanged}"/>
+                        <Grid Margin="0,10,0,0">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="120"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
 
-                    <TextBlock Text="{DynamicResource sources.http.referer}"
-                               Margin="0,14,0,6"
-                               Foreground="{StaticResource BrushFg1}"/>
-                    <TextBox Text="{Binding Referer, UpdateSourceTrigger=PropertyChanged}"/>
+                            <!-- Name -->
+                            <TextBlock Grid.Row="0"
+                                       Grid.Column="0"
+                                       Text="{loc:Loc Key=Providers.Add.NameLabel}"
+                                       Foreground="{StaticResource BrushFg2}"
+                                       VerticalAlignment="Center"
+                                       Margin="0,0,6,4"/>
+                            <TextBox Grid.Row="0"
+                                     Grid.Column="1"
+                                     Text="{Binding NewName, UpdateSourceTrigger=PropertyChanged}"
+                                     Height="28"/>
 
-                    <TextBlock Text="{DynamicResource sources.http.timeout}"
-                               Margin="0,14,0,6"
-                               Foreground="{StaticResource BrushFg1}"/>
-                    <TextBox Text="{Binding TimeoutSeconds, UpdateSourceTrigger=PropertyChanged}"/>
+                            <!-- M3U URL -->
+                            <TextBlock Grid.Row="1"
+                                       Grid.Column="0"
+                                       Text="{loc:Loc Key=Providers.Add.M3uUrlLabel}"
+                                       Foreground="{StaticResource BrushFg2}"
+                                       VerticalAlignment="Center"
+                                       Margin="0,4,6,4"/>
+                            <TextBox Grid.Row="1"
+                                     Grid.Column="1"
+                                     Text="{Binding M3uUrl, UpdateSourceTrigger=PropertyChanged}"
+                                     Height="28"
+                                     Margin="0,4,0,0"/>
 
-                    <CheckBox Content="{DynamicResource sources.enableForProfile}"
-                              IsChecked="{Binding EnableForProfile}"
-                              Margin="0,14,0,0"/>
+                            <!-- Enable for profile -->
+                            <StackPanel Grid.Row="2"
+                                        Grid.Column="1"
+                                        Orientation="Horizontal"
+                                        Margin="0,6,0,0">
+                                <CheckBox IsChecked="{Binding EnableForProfile}"
+                                          VerticalAlignment="Center"/>
+                                <TextBlock Text="{loc:Loc Key=Providers.Add.EnableForProfileLabel}"
+                                           Margin="6,0,0,0"
+                                           Foreground="{StaticResource BrushFg2}"
+                                           VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Grid>
 
-                    <Button Content="{DynamicResource sources.save}"
-                            Margin="0,16,0,0"
-                            Command="{Binding AddM3uCommand}"
-                            IsEnabled="{Binding IsNotBusy}"
-                            Style="{StaticResource AccentButton}"/>
-                </StackPanel>
-            </ScrollViewer>
+                        <StackPanel Orientation="Horizontal"
+                                    HorizontalAlignment="Right"
+                                    Margin="0,10,0,0">
+                            <Button Content="{loc:Loc Key=Providers.Add.AddButton}"
+                                    Command="{Binding AddM3uCommand}"
+                                    Height="32"
+                                    Padding="18,0"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Selected provider: enable + EPG + HTTP -->
+                <Border Style="{StaticResource Card}"
+                        Padding="12">
+                    <StackPanel>
+                        <TextBlock Text="{loc:Loc Key=Providers.Selected.SectionTitle}"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource BrushFg1}"/>
+
+                        <!-- Enable toggle + actions -->
+                        <Grid Margin="0,8,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Orientation="Horizontal"
+                                        VerticalAlignment="Center">
+                                <CheckBox IsChecked="{Binding IsEnabledForProfile}"
+                                          VerticalAlignment="Center"
+                                          Command="{Binding ToggleEnabledCommand}"/>
+                                <TextBlock Text="{loc:Loc Key=Providers.Selected.EnabledForProfileLabel}"
+                                           Margin="6,0,0,0"
+                                           Foreground="{StaticResource BrushFg2}"
+                                           VerticalAlignment="Center"/>
+                            </StackPanel>
+
+                            <Button Grid.Column="1"
+                                    Content="{loc:Loc Key=Providers.Selected.RefreshCatalogButton}"
+                                    Command="{Binding RefreshCatalogCommand}"
+                                    Height="28"
+                                    Padding="10,0"
+                                    Margin="8,0,0,0"/>
+
+                            <Button Grid.Column="2"
+                                    Content="{loc:Loc Key=Providers.Selected.DeleteButton}"
+                                    Command="{Binding DeleteSelectedCommand}"
+                                    Height="28"
+                                    Padding="10,0"
+                                    Margin="8,0,0,0"/>
+                        </Grid>
+
+                        <Separator Margin="0,4,0,8"/>
+
+                        <!-- EPG XMLTV -->
+                        <TextBlock Text="{loc:Loc Key=Providers.Epg.SectionTitle}"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource BrushFg1}"/>
+
+                        <Grid Margin="0,6,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="120"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock Grid.Column="0"
+                                       Text="{loc:Loc Key=Providers.Epg.XmltvUrlLabel}"
+                                       Foreground="{StaticResource BrushFg2}"
+                                       VerticalAlignment="Center"
+                                       Margin="0,0,6,0"/>
+                            <TextBox Grid.Column="1"
+                                     Text="{Binding XmltvUrl, UpdateSourceTrigger=PropertyChanged}"
+                                     Height="28"/>
+
+                            <Button Grid.Column="2"
+                                    Content="{loc:Loc Key=Providers.Epg.SaveButton}"
+                                    Command="{Binding SaveXmltvCommand}"
+                                    Height="28"
+                                    Padding="10,0"
+                                    Margin="8,0,0,0"/>
+                        </Grid>
+
+                        <Separator Margin="0,10,0,8"/>
+
+                        <!-- HTTP advanced -->
+                        <TextBlock Text="{loc:Loc Key=Providers.Http.SectionTitle}"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource BrushFg1}"/>
+
+                        <Grid Margin="0,6,0,0">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="120"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <!-- User-Agent -->
+                            <TextBlock Grid.Row="0"
+                                       Grid.Column="0"
+                                       Text="{loc:Loc Key=Providers.Http.UserAgentLabel}"
+                                       Foreground="{StaticResource BrushFg2}"
+                                       VerticalAlignment="Center"
+                                       Margin="0,0,6,4"/>
+                            <TextBox Grid.Row="0"
+                                     Grid.Column="1"
+                                     Text="{Binding UserAgent, UpdateSourceTrigger=PropertyChanged}"
+                                     Height="28"/>
+
+                            <!-- Referer -->
+                            <TextBlock Grid.Row="1"
+                                       Grid.Column="0"
+                                       Text="{loc:Loc Key=Providers.Http.RefererLabel}"
+                                       Foreground="{StaticResource BrushFg2}"
+                                       VerticalAlignment="Center"
+                                       Margin="0,4,6,4"/>
+                            <TextBox Grid.Row="1"
+                                     Grid.Column="1"
+                                     Text="{Binding Referer, UpdateSourceTrigger=PropertyChanged}"
+                                     Height="28"
+                                     Margin="0,4,0,0"/>
+
+                            <!-- Timeout -->
+                            <TextBlock Grid.Row="2"
+                                       Grid.Column="0"
+                                       Text="{loc:Loc Key=Providers.Http.TimeoutLabel}"
+                                       Foreground="{StaticResource BrushFg2}"
+                                       VerticalAlignment="Center"
+                                       Margin="0,4,6,0"/>
+                            <TextBox Grid.Row="2"
+                                     Grid.Column="1"
+                                     Text="{Binding TimeoutSeconds, UpdateSourceTrigger=PropertyChanged}"
+                                     Height="28"
+                                     Margin="0,4,0,0"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </Grid>
+
+        <!-- STATUS BAR -->
+        <Border Grid.Row="2"
+                Margin="0,10,0,0"
+                Padding="8"
+                Style="{StaticResource Card}">
+            <TextBlock Text="{Binding Status}"
+                       Foreground="{StaticResource BrushFg2}"
+                       FontSize="12"/>
         </Border>
     </Grid>
 </UserControl>
