@@ -98,6 +98,15 @@ public sealed class ProviderService
         _bus.RaiseToast(Loc.Svc["Providers.Toast.ProviderDeleted"]);
     }
 
+    /// <summary>
+    /// Yeni M3U sağlayıcı ekler.
+    /// Artık burada:
+    ///  - sağlayıcı kaydediliyor,
+    ///  - profil-link ekleniyor,
+    ///  - ardından otomatik olarak RefreshCatalogAsync(provider) çağrılıyor.
+    /// 
+    /// Yani kullanıcı ekstra "Kataloğu yenile" butonuna basmak zorunda değil.
+    /// </summary>
     public async Task AddM3uProviderAsync(
         string profileId,
         string name,
@@ -124,9 +133,9 @@ public sealed class ProviderService
             Http: NormalizeHttp(http),
             CreatedUtc: DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture));
 
+        // 1) Provider & link kaydı
         await _providers.UpsertAsync(provider).ConfigureAwait(false);
 
-        // SortOrder düzgün olsun
         var existing = await _links.GetAllAsync().ConfigureAwait(false);
         var maxSort = existing
             .Where(x => string.Equals(x.ProfileId, profileId, StringComparison.OrdinalIgnoreCase))
@@ -140,7 +149,25 @@ public sealed class ProviderService
             IsEnabled: enableForProfile,
             SortOrder: maxSort + 1)).ConfigureAwait(false);
 
-        _bus.RaiseProvidersChanged();
+        // 2) Kullanıcıdan ekstra aksiyon beklemeden:
+        //    M3U katalog + EPG keşfi + merge işlemini hemen yap.
+        try
+        {
+            await RefreshCatalogAsync(provider).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            // Katalog/EPG başarısız olsa bile provider eklenmiş durumda olsun.
+            // Hata detayını kullanıcıya toast olarak geçelim.
+            var fmt = Loc.Svc["Providers.Status.RefreshErrorPrefix"];
+            var msg = string.Format(CultureInfo.CurrentCulture, fmt, ex.Message);
+            _bus.RaiseToast(msg);
+
+            // Yine de en azından listelerin yenilendiğinden emin olalım.
+            _bus.RaiseProvidersChanged();
+        }
+
+        // 3) Add işlemi için ayrı bilgi mesajı (isteğe bağlı).
         _bus.RaiseToast(Loc.Svc["Providers.Toast.ProviderAdded"]);
     }
 
@@ -214,9 +241,9 @@ public sealed class ProviderService
         _bus.RaiseToast(Loc.Svc["Providers.Toast.CatalogUpdated"]);
     }
 
-    // ----------------------------
+    // ------------------------------------------------------------
     // EPG download + merge (soft rate limit + report)
-    // ----------------------------
+    // ------------------------------------------------------------
 
     private sealed record ParsedEpg(
         string Url,
@@ -307,7 +334,7 @@ public sealed class ProviderService
 
         var parsedAll = parsedBag.ToList();
 
-        // Kanal bazında TEK kaynak seçimi
+        // Kanal bazında tek kaynak seçimi
         var urlOrder = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         for (int i = 0; i < urls.Count; i++)
             urlOrder[urls[i]] = i;
@@ -445,10 +472,8 @@ public sealed class ProviderService
         if (string.IsNullOrWhiteSpace(xml))
             return false;
 
-        // Buradan sonra xml null DEĞİL -> non-nullable local
         string t = xml!;
 
-        // BOM (U+FEFF) whitespace sayılmadığı için TrimStart() tek başına yetmiyor.
         t = t.TrimStart('\uFEFF', ' ', '\t', '\r', '\n');
 
         if (!t.StartsWith("<", StringComparison.Ordinal))
@@ -488,7 +513,6 @@ public sealed class ProviderService
 
     private static ProviderHttpConfig NormalizeHttp(ProviderHttpConfig? http)
     {
-        // User-Agent
         string ua;
         if (string.IsNullOrWhiteSpace(http?.UserAgent))
         {
@@ -499,7 +523,6 @@ public sealed class ProviderService
             ua = http.UserAgent!.Trim();
         }
 
-        // Referer
         string? referer;
         if (http is null || string.IsNullOrWhiteSpace(http.Referer))
         {
@@ -510,10 +533,8 @@ public sealed class ProviderService
             referer = http.Referer.Trim();
         }
 
-        // Timeout
         var timeout = http?.TimeoutSeconds > 0 ? http.TimeoutSeconds : 180;
 
-        // Headers
         Dictionary<string, string>? headers = null;
         if (http?.Headers is { Count: > 0 } raw)
         {
