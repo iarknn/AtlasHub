@@ -40,8 +40,9 @@
                                Margin="0,4,0,0"/>
                 </StackPanel>
 
+                <!-- Artık "Dilleri yenile" değil, sadece kaynakları yeniler -->
                 <Button Grid.Column="1"
-                        Content="{loc:Loc Key=Settings.Language.Reload}"
+                        Content="{loc:Loc Key=Providers.ReloadButton}"
                         Command="{Binding ReloadCommand}"
                         Height="32"
                         Padding="14,0"
@@ -94,12 +95,9 @@
                                TextWrapping="Wrap">
                         <TextBlock.Style>
                             <Style TargetType="TextBlock">
-                                <!-- Varsayılan: gizli -->
                                 <Setter Property="Visibility" Value="Collapsed"/>
                                 <Style.Triggers>
-                                    <!-- Providers.Count == 0 ise görünür yap -->
-                                    <DataTrigger Binding="{Binding Providers.Count}"
-                                                 Value="0">
+                                    <DataTrigger Binding="{Binding Providers.Count}" Value="0">
                                         <Setter Property="Visibility" Value="Visible"/>
                                     </DataTrigger>
                                 </Style.Triggers>
@@ -109,7 +107,7 @@
                 </DockPanel>
             </Border>
 
-            <!-- Right side: add + EPG + HTTP -->
+            <!-- Right side: add + selected -->
             <StackPanel Grid.Column="1" Orientation="Vertical">
                 <!-- Add M3U -->
                 <Border Style="{StaticResource Card}"
@@ -181,7 +179,7 @@
                     </StackPanel>
                 </Border>
 
-                <!-- Selected provider: enable + EPG + HTTP -->
+                <!-- Selected provider: enable + edit + EPG + HTTP -->
                 <Border Style="{StaticResource Card}"
                         Padding="12">
                     <StackPanel>
@@ -222,6 +220,50 @@
                                     Padding="10,0"
                                     Margin="8,0,0,0"/>
                         </Grid>
+
+                        <!-- Seçili kaynağın Ad + M3U alanları -->
+                        <Grid Margin="0,0,0,0">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="120"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock Grid.Row="0"
+                                       Grid.Column="0"
+                                       Text="{loc:Loc Key=Providers.Selected.NameLabel}"
+                                       Foreground="{StaticResource BrushFg2}"
+                                       VerticalAlignment="Center"
+                                       Margin="0,0,6,4"/>
+                            <TextBox Grid.Row="0"
+                                     Grid.Column="1"
+                                     Text="{Binding SelectedName, UpdateSourceTrigger=PropertyChanged}"
+                                     Height="28"/>
+
+                            <TextBlock Grid.Row="1"
+                                       Grid.Column="0"
+                                       Text="{loc:Loc Key=Providers.Selected.M3uUrlLabel}"
+                                       Foreground="{StaticResource BrushFg2}"
+                                       VerticalAlignment="Center"
+                                       Margin="0,4,6,4"/>
+                            <TextBox Grid.Row="1"
+                                     Grid.Column="1"
+                                     Text="{Binding SelectedM3uUrl, UpdateSourceTrigger=PropertyChanged}"
+                                     Height="28"
+                                     Margin="0,4,0,0"/>
+                        </Grid>
+
+                        <StackPanel Orientation="Horizontal"
+                                    HorizontalAlignment="Right"
+                                    Margin="0,6,0,8">
+                            <Button Content="{loc:Loc Key=Providers.Selected.SaveButton}"
+                                    Command="{Binding SaveSelectedProviderCommand}"
+                                    Height="28"
+                                    Padding="14,0"/>
+                        </StackPanel>
 
                         <Separator Margin="0,4,0,8"/>
 

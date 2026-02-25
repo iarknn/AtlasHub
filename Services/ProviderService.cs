@@ -1,12 +1,16 @@
-﻿using AtlasHub.Models;
+﻿using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Text;
-using System.Text.RegularExpressions;
 using System.Threading;
+using System.Threading.Tasks;
+using AtlasHub.Localization;
+using AtlasHub.Models;
 
 namespace AtlasHub.Services;
 
@@ -17,7 +21,6 @@ public sealed class ProviderService
     private readonly CatalogRepository _catalog;
     private readonly M3uImporter _m3u;
     private readonly AppEventBus _bus;
-
     private readonly ProviderEpgRepository _providerEpg;
     private readonly EpgRepository _epgRepo;
     private readonly XmlTvParser _xmltv;
@@ -41,7 +44,6 @@ public sealed class ProviderService
         _catalog = catalog;
         _m3u = m3u;
         _bus = bus;
-
         _providerEpg = providerEpg;
         _epgRepo = epgRepo;
         _xmltv = xmltv;
@@ -61,16 +63,18 @@ public sealed class ProviderService
 
     public async Task<List<ProviderSource>> GetEnabledProvidersForProfileAsync(string profileId)
     {
-        var links = await _links.GetAllAsync();
+        var links = await _links.GetAllAsync().ConfigureAwait(false);
+
         var enabledIds = links
             .Where(x => string.Equals(x.ProfileId, profileId, StringComparison.OrdinalIgnoreCase) && x.IsEnabled)
             .OrderBy(x => x.SortOrder)
             .Select(x => x.ProviderId)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        if (enabledIds.Count == 0) return new();
+        if (enabledIds.Count == 0)
+            return new List<ProviderSource>();
 
-        var allProviders = await _providers.GetAllAsync();
+        var allProviders = await _providers.GetAllAsync().ConfigureAwait(false);
         return allProviders.Where(p => enabledIds.Contains(p.Id)).ToList();
     }
 
@@ -79,20 +83,19 @@ public sealed class ProviderService
 
     public async Task SetEnabledAsync(string profileId, string providerId, bool isEnabled)
     {
-        await _links.SetEnabledAsync(profileId, providerId, isEnabled);
+        await _links.SetEnabledAsync(profileId, providerId, isEnabled).ConfigureAwait(false);
         _bus.RaiseProvidersChanged();
     }
 
     public async Task DeleteProviderAsync(string providerId)
     {
-        await _providers.DeleteAsync(providerId);
-        await _links.DeleteByProviderAsync(providerId);
-
-        await _catalog.DeleteAsync(providerId);
-        await _epgRepo.DeleteAsync(providerId);
+        await _providers.DeleteAsync(providerId).ConfigureAwait(false);
+        await _links.DeleteByProviderAsync(providerId).ConfigureAwait(false);
+        await _catalog.DeleteAsync(providerId).ConfigureAwait(false);
+        await _epgRepo.DeleteAsync(providerId).ConfigureAwait(false);
 
         _bus.RaiseProvidersChanged();
-        _bus.RaiseToast("Kaynak silindi.");
+        _bus.RaiseToast(Loc.Svc["Providers.Toast.ProviderDeleted"]);
     }
 
     public async Task AddM3uProviderAsync(
@@ -104,15 +107,14 @@ public sealed class ProviderService
         ProviderHttpConfig? http)
     {
         if (string.IsNullOrWhiteSpace(name))
-            throw new ArgumentException("Kaynak adı boş olamaz.", nameof(name));
+            throw new ArgumentException(Loc.Svc["Providers.Error.M3uNameRequired"], nameof(name));
 
         var cfg = new ProviderM3uConfig(
             M3uUrl: string.IsNullOrWhiteSpace(m3uUrl) ? null : m3uUrl.Trim(),
-            M3uFilePath: string.IsNullOrWhiteSpace(m3uFilePath) ? null : m3uFilePath.Trim()
-        );
+            M3uFilePath: string.IsNullOrWhiteSpace(m3uFilePath) ? null : m3uFilePath.Trim());
 
         if (string.IsNullOrWhiteSpace(cfg.M3uUrl) && string.IsNullOrWhiteSpace(cfg.M3uFilePath))
-            throw new ArgumentException("M3U URL veya dosya yolu girilmelidir.");
+            throw new ArgumentException(Loc.Svc["Providers.Error.M3uSourceRequired"]);
 
         var provider = new ProviderSource(
             Id: Guid.NewGuid().ToString("N"),
@@ -120,13 +122,12 @@ public sealed class ProviderService
             Type: "M3U",
             M3u: cfg,
             Http: NormalizeHttp(http),
-            CreatedUtc: DateTimeOffset.UtcNow.ToString("O")
-        );
+            CreatedUtc: DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture));
 
-        await _providers.UpsertAsync(provider);
+        await _providers.UpsertAsync(provider).ConfigureAwait(false);
 
         // SortOrder düzgün olsun
-        var existing = await _links.GetAllAsync();
+        var existing = await _links.GetAllAsync().ConfigureAwait(false);
         var maxSort = existing
             .Where(x => string.Equals(x.ProfileId, profileId, StringComparison.OrdinalIgnoreCase))
             .Select(x => x.SortOrder)
@@ -137,11 +138,22 @@ public sealed class ProviderService
             ProfileId: profileId,
             ProviderId: provider.Id,
             IsEnabled: enableForProfile,
-            SortOrder: maxSort + 1
-        ));
+            SortOrder: maxSort + 1)).ConfigureAwait(false);
 
         _bus.RaiseProvidersChanged();
-        _bus.RaiseToast("Kaynak eklendi.");
+        _bus.RaiseToast(Loc.Svc["Providers.Toast.ProviderAdded"]);
+    }
+
+    /// <summary>
+    /// Mevcut bir sağlayıcının (ad, M3U, HTTP vs.) güncellenmesi.
+    /// </summary>
+    public async Task UpdateProviderAsync(ProviderSource updated)
+    {
+        if (updated is null) throw new ArgumentNullException(nameof(updated));
+
+        await _providers.UpsertAsync(updated).ConfigureAwait(false);
+        _bus.RaiseProvidersChanged();
+        _bus.RaiseToast(Loc.Svc["Providers.Toast.ProviderUpdated"]);
     }
 
     public async Task RefreshCatalogAsync(ProviderSource provider)
@@ -151,16 +163,16 @@ public sealed class ProviderService
         var http = NormalizeHttp(provider.Http);
 
         // 1) M3U indir/oku + parse
-        var m3uText = await LoadM3uTextAsync(provider.M3u, http);
+        var m3uText = await LoadM3uTextAsync(provider.M3u, http).ConfigureAwait(false);
         var snapshot = _m3u.Parse(provider.Id, provider.Name, m3uText);
-        await _catalog.SaveAsync(snapshot);
+        await _catalog.SaveAsync(snapshot).ConfigureAwait(false);
 
-        // 2) EPG URL keşfi: kullanıcı elle ayarlamadıysa header’daki HEPSİ
-        var epgCfg = await _providerEpg.GetForProviderAsync(provider.Id);
+        // 2) EPG URL keşfi: kullanıcı elle ayarlamadıysa header’daki HEPSİ var
+        var epgCfg = await _providerEpg.GetForProviderAsync(provider.Id).ConfigureAwait(false);
 
-        var hasManual =
-            epgCfg is not null &&
-            (!string.IsNullOrWhiteSpace(epgCfg.XmltvUrl) || !string.IsNullOrWhiteSpace(epgCfg.XmltvFilePath));
+        var hasManual = epgCfg is not null &&
+                        (!string.IsNullOrWhiteSpace(epgCfg.XmltvUrl) ||
+                         !string.IsNullOrWhiteSpace(epgCfg.XmltvFilePath));
 
         if (!hasManual)
         {
@@ -168,7 +180,7 @@ public sealed class ProviderService
             if (allUrls.Count > 0)
             {
                 var joined = M3uHeaderParser.JoinUrls(allUrls);
-                await _providerEpg.SetForProviderAsync(provider.Id, joined, null);
+                await _providerEpg.SetForProviderAsync(provider.Id, joined, null).ConfigureAwait(false);
                 epgCfg = new ProviderEpgConfig(provider.Id, joined, null);
             }
         }
@@ -178,42 +190,48 @@ public sealed class ProviderService
         {
             if (!string.IsNullOrWhiteSpace(epgCfg.XmltvFilePath))
             {
-                var xmlSingle = await _xmltvDownloader.LoadXmlTvTextAsync(null, epgCfg.XmltvFilePath, http);
-                await SaveSingleEpgAsync(provider.Id, xmlSingle);
+                var xmlSingle = await _xmltvDownloader
+                    .LoadXmlTvTextAsync(null, epgCfg.XmltvFilePath, http)
+                    .ConfigureAwait(false);
+
+                await SaveSingleEpgAsync(provider.Id, xmlSingle).ConfigureAwait(false);
             }
             else
             {
                 var urls = M3uHeaderParser.SplitJoinedUrls(epgCfg.XmltvUrl);
-
                 if (urls.Count == 0)
                 {
-                    _bus.RaiseToast("EPG bulunamadı (x-tvg-url yok).");
+                    _bus.RaiseToast(Loc.Svc["Providers.Toast.EpgNotFound"]);
                 }
                 else
                 {
-                    await DownloadMergeAndSaveAllEpgAsync(provider.Id, urls, http);
+                    await DownloadMergeAndSaveAllEpgAsync(provider.Id, urls, http).ConfigureAwait(false);
                 }
             }
         }
 
         _bus.RaiseProvidersChanged();
-        _bus.RaiseToast("Katalog güncellendi.");
+        _bus.RaiseToast(Loc.Svc["Providers.Toast.CatalogUpdated"]);
     }
 
     // ----------------------------
     // EPG download + merge (soft rate limit + report)
     // ----------------------------
 
-    private sealed record ParsedEpg(string Url, List<EpgProgram> Programs, List<EpgChannel> Channels);
+    private sealed record ParsedEpg(
+        string Url,
+        List<EpgProgram> Programs,
+        List<EpgChannel> Channels);
 
-    private async Task DownloadMergeAndSaveAllEpgAsync(string providerId, List<string> urls, ProviderHttpConfig http)
+    private async Task DownloadMergeAndSaveAllEpgAsync(
+        string providerId,
+        List<string> urls,
+        ProviderHttpConfig http)
     {
-        // Domain bazlı yumuşak rate-limit:
-        // epgshare çok paraleli kesebiliyor -> aynı anda az gönderiyoruz
         var epgshareUrls = urls.Where(IsEpgShare).ToList();
         var otherUrls = urls.Where(u => !IsEpgShare(u)).ToList();
 
-        var epgshareParallel = 2; // kritik
+        var epgshareParallel = 2;
         var otherParallel = Math.Clamp(Environment.ProcessorCount, 4, 12);
 
         var parsedBag = new ConcurrentBag<ParsedEpg>();
@@ -224,12 +242,14 @@ public sealed class ProviderService
         async Task ProcessUrl(string url, SemaphoreSlim gate, int startDelayMs)
         {
             if (startDelayMs > 0)
-                await Task.Delay(startDelayMs);
+                await Task.Delay(startDelayMs).ConfigureAwait(false);
 
             await gate.WaitAsync().ConfigureAwait(false);
             try
             {
-                var xml = await _xmltvDownloader.LoadXmlTvTextAsync(url, null, http).ConfigureAwait(false);
+                var xml = await _xmltvDownloader
+                    .LoadXmlTvTextAsync(url, null, http)
+                    .ConfigureAwait(false);
 
                 if (string.IsNullOrWhiteSpace(xml))
                 {
@@ -241,19 +261,17 @@ public sealed class ProviderService
                 if (!LooksLikeXmlTv(xml))
                 {
                     Interlocked.Increment(ref notXml);
-                    report.Add($"NOT_XML {url} (ilk chars: {SafeHead(xml)})");
+                    report.Add($"NOT_XML {url} (head: {SafeHead(xml)})");
                     return;
                 }
 
                 try
                 {
-                    var parsed = _xmltv.Parse(xml!);
-
+                    var parsed = _xmltv.Parse(xml);
                     var progs = parsed.Programs ?? new List<EpgProgram>();
                     var chs = parsed.Channels ?? new List<EpgChannel>();
 
                     parsedBag.Add(new ParsedEpg(url, progs, chs));
-
                     Interlocked.Increment(ref ok);
                     report.Add($"OK {url} programs={progs.Count} channels={chs.Count}");
                 }
@@ -271,8 +289,8 @@ public sealed class ProviderService
 
         var tasks = new List<Task>(urls.Count);
 
-        // epgshare: yavaş ve az paralel, başlangıçları yay
         using (var gate1 = new SemaphoreSlim(epgshareParallel, epgshareParallel))
+        using (var gate2 = new SemaphoreSlim(otherParallel, otherParallel))
         {
             int i = 0;
             foreach (var url in epgshareUrls)
@@ -281,51 +299,41 @@ public sealed class ProviderService
                 i++;
             }
 
-            // diğerleri: daha paralel, delay yok
-            using var gate2 = new SemaphoreSlim(otherParallel, otherParallel);
             foreach (var url in otherUrls)
-                tasks.Add(ProcessUrl(url, gate2, startDelayMs: 0));
+                tasks.Add(ProcessUrl(url, gate2, 0));
 
             await Task.WhenAll(tasks).ConfigureAwait(false);
         }
 
         var parsedAll = parsedBag.ToList();
 
-        // ✅ Kanal bazında TEK kaynak seçimi
-        // Her channelId için hangi URL daha çok program veriyorsa o "kazansın".
-        // Tie-break: urls listesinde daha önce gelen URL kazansın.
+        // Kanal bazında TEK kaynak seçimi
         var urlOrder = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        for (int i = 0; i < urls.Count; i++) urlOrder[urls[i]] = i;
+        for (int i = 0; i < urls.Count; i++)
+            urlOrder[urls[i]] = i;
 
-        // channelId -> (url, count)
-        var bestSourceByChannel = new Dictionary<string, (string url, int count)>(StringComparer.OrdinalIgnoreCase);
+        var bestSourceByChannel =
+            new Dictionary<string, (string url, int count)>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var pe in parsedAll)
         {
-            // her kaynaktaki programları channelId’ye göre say
             var counts = pe.Programs
                 .Where(p => !string.IsNullOrWhiteSpace(p.ChannelId))
                 .GroupBy(p => p.ChannelId!.Trim(), StringComparer.OrdinalIgnoreCase)
-                .Select(g => (channelId: g.Key, count: g.Count()))
-                .ToList();
+                .Select(g => (channelId: g.Key, count: g.Count()));
 
             foreach (var (channelId, count) in counts)
             {
                 if (!bestSourceByChannel.TryGetValue(channelId, out var best))
                 {
                     bestSourceByChannel[channelId] = (pe.Url, count);
-                    continue;
                 }
-
-                if (count > best.count)
+                else if (count > best.count)
                 {
                     bestSourceByChannel[channelId] = (pe.Url, count);
-                    continue;
                 }
-
-                if (count == best.count)
+                else if (count == best.count)
                 {
-                    // tie-break: earlier url wins
                     var a = urlOrder.TryGetValue(pe.Url, out var ai) ? ai : int.MaxValue;
                     var b = urlOrder.TryGetValue(best.url, out var bi) ? bi : int.MaxValue;
                     if (a < b)
@@ -334,8 +342,8 @@ public sealed class ProviderService
             }
         }
 
-        // Seçilen kaynağa göre programları filtrele:
-        var mergedPrograms = new List<EpgProgram>(capacity: parsedAll.Sum(x => x.Programs.Count));
+        var mergedPrograms = new List<EpgProgram>(parsedAll.Sum(x => x.Programs.Count));
+
         foreach (var pe in parsedAll)
         {
             foreach (var p in pe.Programs)
@@ -351,13 +359,12 @@ public sealed class ProviderService
             }
         }
 
-        // Son bir dedup (aynı kaynağın kendi iç tekrarları için)
         var dedupedPrograms = mergedPrograms
-            .GroupBy(p => $"{p.ChannelId}|{p.StartUtc}|{p.EndUtc}|{p.Title}", StringComparer.OrdinalIgnoreCase)
+            .GroupBy(p => $"{p.ChannelId}|{p.StartUtc:O}|{p.EndUtc:O}|{p.Title}",
+                     StringComparer.OrdinalIgnoreCase)
             .Select(g => g.First())
             .ToList();
 
-        // Channels: tüm kaynakların channel listelerini birleştir
         var mergedChannels = parsedAll
             .SelectMany(x => x.Channels)
             .GroupBy(c => c.Id, StringComparer.OrdinalIgnoreCase)
@@ -375,33 +382,41 @@ public sealed class ProviderService
 
         var epgSnap = new EpgSnapshot(
             ProviderId: providerId,
-            CreatedUtc: DateTimeOffset.UtcNow.ToString("O"),
+            CreatedUtc: DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture),
             Programs: dedupedPrograms,
-            Channels: mergedChannels
-        );
+            Channels: mergedChannels);
 
         await _epgRepo.SaveAsync(epgSnap).ConfigureAwait(false);
 
-        // Debug report dosyası
         try
         {
             var dir = Path.Combine(_paths.Root, "epg");
             Directory.CreateDirectory(dir);
-
             var reportPath = Path.Combine(dir, $"epg_report_{providerId}.txt");
-            var lines = report.OrderBy(x => x).ToArray();
-            await File.WriteAllLinesAsync(reportPath, lines);
+            var lines = report.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToArray();
+            await File.WriteAllLinesAsync(reportPath, lines).ConfigureAwait(false);
         }
-        catch { }
+        catch
+        {
+            // ignore
+        }
 
-        _bus.RaiseToast($"EPG: OK={ok}, DL_FAIL={dlFail}, PARSE_FAIL={parseFail}, NOT_XML={notXml}, Programs={dedupedPrograms.Count}, Channels={mergedChannels.Count}");
+        var toastFmt = Loc.Svc["Providers.Toast.EpgMergeSummary"];
+        var toast = string.Format(
+            CultureInfo.CurrentCulture,
+            toastFmt,
+            ok, dlFail, parseFail, notXml,
+            dedupedPrograms.Count,
+            mergedChannels.Count);
+
+        _bus.RaiseToast(toast);
     }
 
     private async Task SaveSingleEpgAsync(string providerId, string? xml)
     {
         if (!LooksLikeXmlTv(xml))
         {
-            _bus.RaiseToast("EPG indirilemedi (XMLTV değil / erişim engeli).");
+            _bus.RaiseToast(Loc.Svc["Providers.Toast.EpgLoadFailed"]);
             return;
         }
 
@@ -409,53 +424,63 @@ public sealed class ProviderService
 
         var epgSnap = new EpgSnapshot(
             ProviderId: providerId,
-            CreatedUtc: DateTimeOffset.UtcNow.ToString("O"),
-            Programs: parsed.Programs,
-            Channels: parsed.Channels
-        );
+            CreatedUtc: DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture),
+            Programs: parsed.Programs ?? new List<EpgProgram>(),
+            Channels: parsed.Channels ?? new List<EpgChannel>());
 
-        await _epgRepo.SaveAsync(epgSnap);
+        await _epgRepo.SaveAsync(epgSnap).ConfigureAwait(false);
 
-        _bus.RaiseToast($"EPG yüklendi: {parsed.Programs.Count} program, {parsed.Channels.Count} kanal");
+        var fmt = Loc.Svc["Providers.Toast.EpgLoadedSummary"];
+        var msg = string.Format(
+            CultureInfo.CurrentCulture,
+            fmt,
+            epgSnap.Programs.Count,
+            epgSnap.Channels.Count);
+
+        _bus.RaiseToast(msg);
     }
 
     private static bool LooksLikeXmlTv(string? xml)
     {
-        if (string.IsNullOrWhiteSpace(xml)) return false;
+        if (string.IsNullOrWhiteSpace(xml))
+            return false;
+
+        // Buradan sonra xml null DEĞİL -> non-nullable local
+        string t = xml!;
 
         // BOM (U+FEFF) whitespace sayılmadığı için TrimStart() tek başına yetmiyor.
-        var t = xml.TrimStart('\uFEFF', ' ', '\t', '\r', '\n');
+        t = t.TrimStart('\uFEFF', ' ', '\t', '\r', '\n');
 
-        if (!t.StartsWith("<", StringComparison.Ordinal)) return false;
+        if (!t.StartsWith("<", StringComparison.Ordinal))
+            return false;
 
-        if (t.StartsWith("<tv", StringComparison.OrdinalIgnoreCase)) return true;
+        if (t.StartsWith("<?xml", StringComparison.OrdinalIgnoreCase))
+        {
+            var idx = t.IndexOf('>');
+            if (idx >= 0 && idx + 1 < t.Length)
+                t = t[(idx + 1)..].TrimStart();
+        }
 
-        if (t.StartsWith("<?xml", StringComparison.OrdinalIgnoreCase) &&
-            t.Contains("<tv", StringComparison.OrdinalIgnoreCase))
+        if (t.StartsWith("<tv", StringComparison.OrdinalIgnoreCase) ||
+            t.StartsWith("<!DOCTYPE tv", StringComparison.OrdinalIgnoreCase))
             return true;
 
         return false;
     }
 
-    private static bool IsEpgShare(string url)
+    private static string SafeHead(string? s, int max = 40)
     {
-        try
-        {
-            var u = new Uri(url);
-            return u.Host.Contains("epgshare", StringComparison.OrdinalIgnoreCase);
-        }
-        catch
-        {
-            return url.Contains("epgshare", StringComparison.OrdinalIgnoreCase);
-        }
+        if (string.IsNullOrEmpty(s))
+            return string.Empty;
+
+        s = s.Replace("\r", " ").Replace("\n", " ");
+        if (s.Length > max) s = s[..max];
+        return s;
     }
 
-    private static string SafeHead(string s)
-    {
-        s = s.TrimStart('\uFEFF', ' ', '\t', '\r', '\n');
-        if (s.Length <= 40) return s.Replace("\r", " ").Replace("\n", " ");
-        return s.Substring(0, 40).Replace("\r", " ").Replace("\n", " ") + "...";
-    }
+    private static bool IsEpgShare(string url)
+        => url.Contains("epgshare", StringComparison.OrdinalIgnoreCase)
+           || url.Contains("epg.best", StringComparison.OrdinalIgnoreCase);
 
     // ----------------------------
     // HTTP / M3U helpers
@@ -463,43 +488,68 @@ public sealed class ProviderService
 
     private static ProviderHttpConfig NormalizeHttp(ProviderHttpConfig? http)
     {
-        var ua = string.IsNullOrWhiteSpace(http?.UserAgent)
-            ? "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            : http!.UserAgent!.Trim();
-
-        var referer = string.IsNullOrWhiteSpace(http?.Referer) ? null : http!.Referer!.Trim();
-        var timeout = http?.TimeoutSeconds is > 0 ? http.TimeoutSeconds : 180;
-
-        Dictionary<string, string>? headers = null;
-        if (http?.Headers is not null && http.Headers.Count > 0)
+        // User-Agent
+        string ua;
+        if (string.IsNullOrWhiteSpace(http?.UserAgent))
         {
-            headers = http.Headers
+            ua = "AtlasHub/1.0 (Windows; WPF)";
+        }
+        else
+        {
+            ua = http.UserAgent!.Trim();
+        }
+
+        // Referer
+        string? referer;
+        if (http is null || string.IsNullOrWhiteSpace(http.Referer))
+        {
+            referer = null;
+        }
+        else
+        {
+            referer = http.Referer.Trim();
+        }
+
+        // Timeout
+        var timeout = http?.TimeoutSeconds > 0 ? http.TimeoutSeconds : 180;
+
+        // Headers
+        Dictionary<string, string>? headers = null;
+        if (http?.Headers is { Count: > 0 } raw)
+        {
+            headers = raw
                 .Where(kv => !string.IsNullOrWhiteSpace(kv.Key) && !string.IsNullOrWhiteSpace(kv.Value))
-                .ToDictionary(kv => kv.Key.Trim(), kv => kv.Value.Trim(), StringComparer.OrdinalIgnoreCase);
+                .ToDictionary(
+                    kv => kv.Key.Trim(),
+                    kv => kv.Value.Trim(),
+                    StringComparer.OrdinalIgnoreCase);
         }
 
         return new ProviderHttpConfig(
             UserAgent: ua,
             Referer: referer,
             Headers: headers,
-            TimeoutSeconds: timeout
-        );
+            TimeoutSeconds: timeout);
     }
 
-    private static async Task<string> LoadM3uTextAsync(ProviderM3uConfig m3u, ProviderHttpConfig http)
+    private static async Task<string> LoadM3uTextAsync(
+        ProviderM3uConfig m3u,
+        ProviderHttpConfig http)
     {
         if (!string.IsNullOrWhiteSpace(m3u.M3uFilePath))
         {
             if (!File.Exists(m3u.M3uFilePath))
-                throw new FileNotFoundException("M3U dosyası bulunamadı.", m3u.M3uFilePath);
+                throw new FileNotFoundException(
+                    Loc.Svc["Providers.Error.M3uFileNotFound"],
+                    m3u.M3uFilePath);
 
-            return await File.ReadAllTextAsync(m3u.M3uFilePath);
+            return await File.ReadAllTextAsync(m3u.M3uFilePath).ConfigureAwait(false);
         }
 
         if (string.IsNullOrWhiteSpace(m3u.M3uUrl))
-            throw new InvalidOperationException("M3U URL veya dosya yolu boş.");
+            throw new InvalidOperationException(Loc.Svc["Providers.Error.M3uUrlOrFileMissing"]);
 
-        return await DownloadTextAsync(m3u.M3uUrl, http);
+        return await DownloadTextAsync(m3u.M3uUrl, http).ConfigureAwait(false);
     }
 
     private static async Task<string> DownloadTextAsync(string url, ProviderHttpConfig http)
@@ -528,18 +578,18 @@ public sealed class ProviderService
             {
                 if (!req.Headers.TryAddWithoutValidation(kv.Key, kv.Value))
                 {
-                    req.Content ??= new StringContent("");
+                    req.Content ??= new StringContent(string.Empty);
                     req.Content.Headers.TryAddWithoutValidation(kv.Key, kv.Value);
                 }
             }
         }
 
-        using var res = await client.SendAsync(req);
+        using var res = await client.SendAsync(req).ConfigureAwait(false);
         res.EnsureSuccessStatusCode();
 
-        var bytes = await res.Content.ReadAsByteArrayAsync();
-
+        var bytes = await res.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
         var charset = res.Content.Headers.ContentType?.CharSet;
+
         if (!string.IsNullOrWhiteSpace(charset))
         {
             try
@@ -547,7 +597,10 @@ public sealed class ProviderService
                 var enc = Encoding.GetEncoding(charset);
                 return enc.GetString(bytes);
             }
-            catch { }
+            catch
+            {
+                // charset hatalıysa UTF-8'e düş
+            }
         }
 
         return Encoding.UTF8.GetString(bytes);

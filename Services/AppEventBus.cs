@@ -1,4 +1,6 @@
-﻿namespace AtlasHub.Services;
+﻿using System;
+
+namespace AtlasHub.Services;
 
 public sealed class AppEventBus
 {
@@ -7,12 +9,14 @@ public sealed class AppEventBus
     public void RaiseProvidersChanged()
         => ProvidersChanged?.Invoke(this, EventArgs.Empty);
 
-    // NEW: toast notifications
+    // Toast bildirimi (string payload)
     public event EventHandler<string>? Toast;
 
     public void RaiseToast(string message)
     {
-        if (string.IsNullOrWhiteSpace(message)) return;
+        if (string.IsNullOrWhiteSpace(message))
+            return;
+
         Toast?.Invoke(this, message);
     }
 }
