@@ -100,14 +100,17 @@ public sealed class ProviderService
 
     /// <summary>
     /// Yeni M3U sağlayıcı ekler.
-    /// Artık burada:
-    ///  - sağlayıcı kaydediliyor,
-    ///  - profil-link ekleniyor,
-    ///  - ardından otomatik olarak RefreshCatalogAsync(provider) çağrılıyor.
     /// 
-    /// Yani kullanıcı ekstra "Kataloğu yenile" butonuna basmak zorunda değil.
+    /// - Provider kaydedilir
+    /// - Profil link’i oluşturulur
+    /// - Ardından otomatik olarak:
+    ///     RefreshCatalogAsync(provider) çağrılır
+    ///   (M3U + EPG indir, parse et, merge et)
+    /// - Sonunda ProvidersChanged eventi atılır.
+    /// 
+    /// Geri dönüş: Oluşturulan ProviderSource.
     /// </summary>
-    public async Task AddM3uProviderAsync(
+    public async Task<ProviderSource> AddM3uProviderAsync(
         string profileId,
         string name,
         string? m3uUrl,
@@ -149,31 +152,26 @@ public sealed class ProviderService
             IsEnabled: enableForProfile,
             SortOrder: maxSort + 1)).ConfigureAwait(false);
 
-        // 2) Kullanıcıdan ekstra aksiyon beklemeden:
-        //    M3U katalog + EPG keşfi + merge işlemini hemen yap.
+        // 2) M3U katalog + EPG keşfi + merge (kullanıcıdan ekstra aksiyon beklemeden)
         try
         {
             await RefreshCatalogAsync(provider).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            // Katalog/EPG başarısız olsa bile provider eklenmiş durumda olsun.
-            // Hata detayını kullanıcıya toast olarak geçelim.
+            // Katalog/EPG başarısız olsa bile provider eklenmiş olsun.
             var fmt = Loc.Svc["Providers.Status.RefreshErrorPrefix"];
             var msg = string.Format(CultureInfo.CurrentCulture, fmt, ex.Message);
             _bus.RaiseToast(msg);
 
-            // Yine de en azından listelerin yenilendiğinden emin olalım.
+            // Yine de event atalım ki listeler yenilensin.
             _bus.RaiseProvidersChanged();
         }
 
-        // 3) Add işlemi için ayrı bilgi mesajı (isteğe bağlı).
         _bus.RaiseToast(Loc.Svc["Providers.Toast.ProviderAdded"]);
+        return provider;
     }
 
-    /// <summary>
-    /// Mevcut bir sağlayıcının (ad, M3U, HTTP vs.) güncellenmesi.
-    /// </summary>
     public async Task UpdateProviderAsync(ProviderSource updated)
     {
         if (updated is null) throw new ArgumentNullException(nameof(updated));
@@ -194,7 +192,7 @@ public sealed class ProviderService
         var snapshot = _m3u.Parse(provider.Id, provider.Name, m3uText);
         await _catalog.SaveAsync(snapshot).ConfigureAwait(false);
 
-        // 2) EPG URL keşfi: kullanıcı elle ayarlamadıysa header’daki HEPSİ var
+        // 2) EPG URL keşfi (kullanıcı daha önce elle ayarlamadıysa)
         var epgCfg = await _providerEpg.GetForProviderAsync(provider.Id).ConfigureAwait(false);
 
         var hasManual = epgCfg is not null &&
@@ -242,7 +240,7 @@ public sealed class ProviderService
     }
 
     // ------------------------------------------------------------
-    // EPG download + merge (soft rate limit + report)
+    // EPG download + merge
     // ------------------------------------------------------------
 
     private sealed record ParsedEpg(

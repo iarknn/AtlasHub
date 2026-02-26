@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.ObjectModel;
-using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
@@ -12,7 +11,7 @@ using CommunityToolkit.Mvvm.Input;
 
 namespace AtlasHub.ViewModels;
 
-public partial class ProvidersViewModel : ViewModelBase
+public partial class ProvidersViewModel : ViewModelBase, IDisposable
 {
     private readonly AppState _state;
     private readonly ProviderService _service;
@@ -23,18 +22,13 @@ public partial class ProvidersViewModel : ViewModelBase
 
     [ObservableProperty] private ProviderSource? _selected;
 
-    // Yeni kaynak ekleme alanı
     [ObservableProperty] private string _newName = "";
     [ObservableProperty] private string _m3uUrl = "";
-
-    // Seçili kaynağı düzenleme alanı
-    [ObservableProperty] private string _selectedName = "";
-    [ObservableProperty] private string _selectedM3uUrl = "";
 
     // XMLTV
     [ObservableProperty] private string _xmltvUrl = "";
 
-    // HTTP (hem ekleme hem düzenleme için kullanıyoruz)
+    // HTTP
     [ObservableProperty] private string _userAgent = "AtlasHub/1.0 (Windows; WPF)";
     [ObservableProperty] private string _referer = "";
     [ObservableProperty] private int _timeoutSeconds = 30;
@@ -60,42 +54,33 @@ public partial class ProvidersViewModel : ViewModelBase
 
         _bus.ProvidersChanged += OnProvidersChanged;
 
+        // İlk yükleme
         _ = ReloadAsync();
     }
 
     private void OnProvidersChanged(object? sender, EventArgs e)
-        => _ = ReloadAsync();
+    {
+        var dispatcher = Application.Current?.Dispatcher;
 
-    partial void OnIsBusyChanged(bool value)
-        => OnPropertyChanged(nameof(IsNotBusy));
+        if (dispatcher is null || dispatcher.CheckAccess())
+        {
+            _ = ReloadAsync();
+        }
+        else
+        {
+            dispatcher.BeginInvoke(new Action(() => _ = ReloadAsync()));
+        }
+    }
+
+    public void Dispose()
+    {
+        _bus.ProvidersChanged -= OnProvidersChanged;
+    }
+
+    partial void OnIsBusyChanged(bool value) => OnPropertyChanged(nameof(IsNotBusy));
 
     partial void OnSelectedChanged(ProviderSource? value)
     {
-        if (value is null)
-        {
-            SelectedName = "";
-            SelectedM3uUrl = "";
-            XmltvUrl = "";
-            UserAgent = "AtlasHub/1.0 (Windows; WPF)";
-            Referer = "";
-            TimeoutSeconds = 30;
-            IsEnabledForProfile = false;
-            return;
-        }
-
-        SelectedName = value.Name ?? "";
-
-        SelectedM3uUrl = value.M3u?.M3uUrl
-                         ?? value.M3u?.M3uFilePath
-                         ?? "";
-
-        UserAgent = value.Http?.UserAgent
-                    ?? "AtlasHub/1.0 (Windows; WPF)";
-        Referer = value.Http?.Referer ?? "";
-        TimeoutSeconds = value.Http?.TimeoutSeconds > 0
-            ? value.Http.TimeoutSeconds
-            : 30;
-
         _ = SyncSelectedEnabledAsync();
         _ = LoadSelectedEpgConfigAsync();
     }
@@ -108,39 +93,36 @@ public partial class ProvidersViewModel : ViewModelBase
     private async Task ReloadAsync()
     {
         if (IsBusy) return;
-        IsBusy = true;
 
+        IsBusy = true;
         try
         {
-            // 1) Veri çekme arka planda
+            Providers.Clear();
+
             var list = await _service.GetProvidersAsync().ConfigureAwait(false);
 
-            // 2) Koleksiyon ve Selected sadece UI thread'de
-            await Application.Current.Dispatcher.InvokeAsync(() =>
+            // UI thread’ine dön
+            var dispatcher = Application.Current?.Dispatcher;
+            if (dispatcher is not null && !dispatcher.CheckAccess())
             {
-                Providers.Clear();
+                await dispatcher.InvokeAsync(() =>
+                {
+                    foreach (var p in list)
+                        Providers.Add(p);
+                });
+            }
+            else
+            {
                 foreach (var p in list)
                     Providers.Add(p);
+            }
 
-                if (Selected is not null)
-                {
-                    var keep = Providers.FirstOrDefault(p => p.Id == Selected.Id);
-                    Selected = keep ?? Providers.FirstOrDefault();
-                }
-                else
-                {
-                    Selected = Providers.FirstOrDefault();
-                }
-            });
+            Selected = Providers.FirstOrDefault();
 
             await SyncSelectedEnabledAsync().ConfigureAwait(false);
             await LoadSelectedEpgConfigAsync().ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            var fmt = Loc.Svc["Providers.Status.ReloadErrorPrefix"];
-            var msg = string.Format(CultureInfo.CurrentCulture, fmt, ex.Message);
-            await Application.Current.Dispatcher.InvokeAsync(() => Status = msg);
+
+            Status = string.Empty;
         }
         finally
         {
@@ -166,9 +148,10 @@ public partial class ProvidersViewModel : ViewModelBase
                 UserAgent: string.IsNullOrWhiteSpace(UserAgent) ? null : UserAgent.Trim(),
                 Referer: string.IsNullOrWhiteSpace(Referer) ? null : Referer.Trim(),
                 Headers: null,
-                TimeoutSeconds: TimeoutSeconds);
+                TimeoutSeconds: TimeoutSeconds
+            );
 
-            await _service.AddM3uProviderAsync(
+            var provider = await _service.AddM3uProviderAsync(
                 profileId: _state.CurrentProfile.Id,
                 name: NewName,
                 m3uUrl: M3uUrl,
@@ -176,16 +159,20 @@ public partial class ProvidersViewModel : ViewModelBase
                 enableForProfile: EnableForProfile,
                 http: http).ConfigureAwait(false);
 
-            await ReloadAsync().ConfigureAwait(false);
+            // Kullanıcı Add penceresinde XMLTV URL girmişse, bunu da kaydedelim.
+            if (!string.IsNullOrWhiteSpace(XmltvUrl))
+            {
+                await _epgCfgRepo.SetForProviderAsync(provider.Id, XmltvUrl, null).ConfigureAwait(false);
+            }
 
+            // Event zaten ProvidersChanged atıyor → ReloadAsync otomatik çağrılacak.
             NewName = "";
             M3uUrl = "";
             XmltvUrl = "";
         }
         catch (Exception ex)
         {
-            var fmt = Loc.Svc["Providers.Status.AddM3uErrorPrefix"];
-            Status = string.Format(CultureInfo.CurrentCulture, fmt, ex.Message);
+            Status = ex.Message;
         }
         finally
         {
@@ -198,15 +185,11 @@ public partial class ProvidersViewModel : ViewModelBase
     {
         if (Selected is null) return;
         if (IsBusy) return;
-        IsBusy = true;
 
+        IsBusy = true;
         try
         {
-            await _epgCfgRepo.SetForProviderAsync(
-                Selected.Id,
-                XmltvUrl,
-                null).ConfigureAwait(false);
-
+            await _epgCfgRepo.SetForProviderAsync(Selected.Id, XmltvUrl, null).ConfigureAwait(false);
             Status = Loc.Svc["Providers.Status.XmltvSaved"];
         }
         finally
@@ -220,12 +203,12 @@ public partial class ProvidersViewModel : ViewModelBase
     {
         if (Selected is null) return;
         if (IsBusy) return;
-        IsBusy = true;
 
+        IsBusy = true;
         try
         {
             await _service.DeleteProviderAsync(Selected.Id).ConfigureAwait(false);
-            await ReloadAsync().ConfigureAwait(false);
+            // ProvidersChanged eventi -> ReloadAsync otomatik
         }
         finally
         {
@@ -238,68 +221,16 @@ public partial class ProvidersViewModel : ViewModelBase
     {
         if (Selected is null) return;
         if (IsBusy) return;
-        IsBusy = true;
 
+        IsBusy = true;
         try
         {
             await _service.RefreshCatalogAsync(Selected).ConfigureAwait(false);
+            // Event + toast içeriden geliyor.
         }
         catch (Exception ex)
         {
-            var fmt = Loc.Svc["Providers.Status.RefreshErrorPrefix"];
-            Status = string.Format(CultureInfo.CurrentCulture, fmt, ex.Message);
-        }
-        finally
-        {
-            IsBusy = false;
-        }
-    }
-
-    [RelayCommand]
-    private async Task SaveSelectedProviderAsync()
-    {
-        if (Selected is null) return;
-        if (IsBusy) return;
-        IsBusy = true;
-
-        try
-        {
-            var newName = SelectedName?.Trim() ?? "";
-            var newM3u = SelectedM3uUrl?.Trim() ?? "";
-
-            if (string.IsNullOrWhiteSpace(newName))
-                throw new ArgumentException(Loc.Svc["Providers.Error.M3uNameRequired"]);
-
-            if (string.IsNullOrWhiteSpace(newM3u))
-                throw new ArgumentException(Loc.Svc["Providers.Error.M3uSourceRequired"]);
-
-            var isUrl = newM3u.StartsWith("http", StringComparison.OrdinalIgnoreCase);
-
-            var m3uCfg = new ProviderM3uConfig(
-                M3uUrl: isUrl ? newM3u : null,
-                M3uFilePath: isUrl ? null : newM3u);
-
-            var httpCfg = new ProviderHttpConfig(
-                UserAgent: string.IsNullOrWhiteSpace(UserAgent) ? null : UserAgent.Trim(),
-                Referer: string.IsNullOrWhiteSpace(Referer) ? null : Referer.Trim(),
-                Headers: Selected.Http?.Headers,
-                TimeoutSeconds: TimeoutSeconds);
-
-            var updated = Selected with
-            {
-                Name = newName,
-                M3u = m3uCfg,
-                Http = httpCfg
-            };
-
-            await _service.UpdateProviderAsync(updated).ConfigureAwait(false);
-
-            await ReloadAsync().ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            var fmt = Loc.Svc["Providers.Status.UpdateErrorPrefix"];
-            Status = string.Format(CultureInfo.CurrentCulture, fmt, ex.Message);
+            Status = ex.Message;
         }
         finally
         {
@@ -318,8 +249,8 @@ public partial class ProvidersViewModel : ViewModelBase
 
         if (Selected is null) return;
         if (IsBusy) return;
-        IsBusy = true;
 
+        IsBusy = true;
         try
         {
             await _service.SetEnabledAsync(
