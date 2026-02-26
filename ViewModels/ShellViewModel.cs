@@ -8,6 +8,7 @@ using AtlasHub.Services;
 using AtlasHub.Views.Pages;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace AtlasHub.ViewModels;
 
@@ -15,23 +16,30 @@ namespace AtlasHub.ViewModels;
 public partial class ShellViewModel : ViewModelBase
 {
     private readonly AppState _state;
-    private readonly LiveTvViewModel _liveVm;
-    private readonly ProvidersViewModel _providersVm;
-    private readonly SettingsViewModel _settingsVm;
+    private readonly IServiceProvider _sp;
     private readonly AppEventBus _bus;
+
     private readonly DispatcherTimer _toastTimer;
 
-    // Page cache (sekme değişimlerinde takılmayı azaltır)
-    private readonly LiveTvPage _livePage;
-    private readonly ProvidersPage _providersPage;
-    private readonly SettingsPage _settingsPage;
-    private readonly PlaceholderPage _moviesPage;
-    private readonly PlaceholderPage _seriesPage;
+    // Lazy pages
+    private LiveTvPage? _livePage;
+    private ProvidersPage? _providersPage;
+    private SettingsPage? _settingsPage;
 
-    public string ProfileDisplay =>
-        _state.CurrentProfile is null ? "—" : _state.CurrentProfile.Name;
+    private PlaceholderPage? _moviesPage;
+    private PlaceholderPage? _seriesPage;
+    private PlaceholderPage? _loadingPage;
 
-    [ObservableProperty] private UserControl _currentPage;
+    // Lazy VMs
+    private LiveTvViewModel? _liveVm;
+    private ProvidersViewModel? _providersVm;
+    private SettingsViewModel? _settingsVm;
+
+    private bool _initScheduled;
+
+    public string ProfileDisplay => _state.CurrentProfile is null ? "—" : _state.CurrentProfile.Name;
+
+    [ObservableProperty] private UserControl _currentPage = new UserControl();
     [ObservableProperty] private string _selectedNav = "live";
 
     public bool IsLive => SelectedNav == "live";
@@ -43,51 +51,32 @@ public partial class ShellViewModel : ViewModelBase
     [ObservableProperty] private string _toastMessage = "";
     [ObservableProperty] private bool _isToastVisible;
 
-    public ShellViewModel(
-        AppState state,
-        LiveTvViewModel liveVm,
-        ProvidersViewModel providersVm,
-        SettingsViewModel settingsVm,
-        AppEventBus bus)
+    public ShellViewModel(AppState state, IServiceProvider sp, AppEventBus bus)
     {
         _state = state;
-        _liveVm = liveVm;
-        _providersVm = providersVm;
-        _settingsVm = settingsVm;
+        _sp = sp;
         _bus = bus;
 
         _bus.Toast += OnToast;
 
-        _toastTimer = new DispatcherTimer
-        {
-            Interval = TimeSpan.FromSeconds(2.2)
-        };
+        _toastTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2.2) };
         _toastTimer.Tick += (_, __) =>
         {
             _toastTimer.Stop();
             IsToastVisible = false;
         };
 
-        // Cache pages once
-        _livePage = new LiveTvPage { DataContext = _liveVm };
-        _providersPage = new ProvidersPage { DataContext = _providersVm };
-        _settingsPage = new SettingsPage { DataContext = _settingsVm };
-
-        var moviesTitle = Loc.Svc["Nav.Movies"];
-        var seriesTitle = Loc.Svc["Nav.Series"];
-
-        _moviesPage = new PlaceholderPage
+        // Açılışta: önce hafif bir sayfa göster (UI hemen paintsin)
+        _loadingPage = new PlaceholderPage
         {
-            DataContext = new PlaceholderPageVm(moviesTitle)
+            DataContext = new PlaceholderPageVm(Loc.Svc["LiveTv.Status.Loading"])
         };
 
-        _seriesPage = new PlaceholderPage
-        {
-            DataContext = new PlaceholderPageVm(seriesTitle)
-        };
-
-        _currentPage = _livePage;
+        _currentPage = _loadingPage;
         _selectedNav = "live";
+
+        // MainWindow görünür olduktan sonra (UI idle) LiveTV'yi lazily yükle
+        ScheduleInit();
     }
 
     partial void OnSelectedNavChanged(string value)
@@ -97,6 +86,18 @@ public partial class ShellViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsSeries));
         OnPropertyChanged(nameof(IsSources));
         OnPropertyChanged(nameof(IsSettings));
+    }
+
+    private void ScheduleInit()
+    {
+        if (_initScheduled) return;
+        _initScheduled = true;
+
+        Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+        {
+            // İlk açılışta Live sekmesine geçir (lazy create)
+            GoLive();
+        }), DispatcherPriority.ApplicationIdle);
     }
 
     private void OnToast(object? sender, string msg)
@@ -110,38 +111,82 @@ public partial class ShellViewModel : ViewModelBase
         });
     }
 
+    private LiveTvPage EnsureLivePage()
+    {
+        _liveVm ??= _sp.GetRequiredService<LiveTvViewModel>();
+        _livePage ??= new LiveTvPage { DataContext = _liveVm };
+
+        // İlk kez oluşturulunca yüklemeyi başlat (UI bloke etmeden)
+        _ = _liveVm.EnsureLoadedAsync();
+
+        return _livePage;
+    }
+
+    private ProvidersPage EnsureProvidersPage()
+    {
+        _providersVm ??= _sp.GetRequiredService<ProvidersViewModel>();
+        _providersPage ??= new ProvidersPage { DataContext = _providersVm };
+
+        // ProvidersViewModel zaten kendi içinde ReloadAsync tetikliyor (mevcut repo hali).
+        // Eğer ileride kaldırırsak, burada manuel tetikleyebiliriz.
+        return _providersPage;
+    }
+
+    private SettingsPage EnsureSettingsPage()
+    {
+        _settingsVm ??= _sp.GetRequiredService<SettingsViewModel>();
+        _settingsPage ??= new SettingsPage { DataContext = _settingsVm };
+        return _settingsPage;
+    }
+
+    private PlaceholderPage EnsureMoviesPage()
+    {
+        if (_moviesPage is not null) return _moviesPage;
+        var title = Loc.Svc["Nav.Movies"];
+        _moviesPage = new PlaceholderPage { DataContext = new PlaceholderPageVm(title) };
+        return _moviesPage;
+    }
+
+    private PlaceholderPage EnsureSeriesPage()
+    {
+        if (_seriesPage is not null) return _seriesPage;
+        var title = Loc.Svc["Nav.Series"];
+        _seriesPage = new PlaceholderPage { DataContext = new PlaceholderPageVm(title) };
+        return _seriesPage;
+    }
+
     [RelayCommand]
     private void GoLive()
     {
         SelectedNav = "live";
-        CurrentPage = _livePage;
+        CurrentPage = EnsureLivePage();
     }
 
     [RelayCommand]
     private void GoMovies()
     {
         SelectedNav = "movies";
-        CurrentPage = _moviesPage;
+        CurrentPage = EnsureMoviesPage();
     }
 
     [RelayCommand]
     private void GoSeries()
     {
         SelectedNav = "series";
-        CurrentPage = _seriesPage;
+        CurrentPage = EnsureSeriesPage();
     }
 
     [RelayCommand]
     private void GoSources()
     {
         SelectedNav = "sources";
-        CurrentPage = _providersPage;
+        CurrentPage = EnsureProvidersPage();
     }
 
     [RelayCommand]
     private void GoSettings()
     {
         SelectedNav = "settings";
-        CurrentPage = _settingsPage;
+        CurrentPage = EnsureSettingsPage();
     }
 }

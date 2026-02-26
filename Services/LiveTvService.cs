@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using AtlasHub.Localization;
 using AtlasHub.Models;
@@ -17,52 +18,59 @@ public sealed class LiveTvService
     }
 
     /// <summary>
-    /// Seçili profil için etkin provider listesini ve
-    /// providerId -> CatalogSnapshot sözlüğünü döner.
+    /// Seçili profil için:
+    /// - Scope listesi (ALL + provider'lar)
+    /// - providerId -> CatalogSnapshot sözlüğü
     /// </summary>
-    public async Task<(List<ProviderScope> scopes,
-                       Dictionary<string, CatalogSnapshot> catalogs)>
-        LoadForProfileAsync(string profileId)
+    public async Task<(List<ProviderScope> scopes, Dictionary<string, CatalogSnapshot> catalogs)> LoadForProfileAsync(string profileId)
     {
         var enabledProviders = await _providers
             .GetEnabledProvidersForProfileAsync(profileId)
             .ConfigureAwait(false);
 
-        // İlk scope her zaman "Tüm kaynaklar"
         var scopes = new List<ProviderScope>
         {
             new("ALL", Loc.Svc["LiveTv.Scope.AllSources"])
         };
 
-        var catalogs = new Dictionary<string, CatalogSnapshot>(
-            StringComparer.OrdinalIgnoreCase);
+        var catalogs = new Dictionary<string, CatalogSnapshot>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var provider in enabledProviders)
+        foreach (var p in enabledProviders)
+            scopes.Add(new ProviderScope(p.Id, p.Name));
+
+        // Katalogları limitli paralel yükle (disk IO'yu patlatmadan hızlandır)
+        const int parallelism = 4;
+        using var gate = new SemaphoreSlim(parallelism, parallelism);
+
+        var tasks = enabledProviders.Select(async provider =>
         {
-            scopes.Add(new ProviderScope(provider.Id, provider.Name));
+            await gate.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                var catalog = await _providers.GetCatalogAsync(provider.Id).ConfigureAwait(false);
+                return (providerId: provider.Id, catalog);
+            }
+            finally
+            {
+                gate.Release();
+            }
+        }).ToList();
 
-            var catalog = await _providers
-                .GetCatalogAsync(provider.Id)
-                .ConfigureAwait(false);
+        var results = await Task.WhenAll(tasks).ConfigureAwait(false);
 
+        foreach (var (providerId, catalog) in results)
+        {
             if (catalog is not null)
-                catalogs[provider.Id] = catalog;
+                catalogs[providerId] = catalog;
         }
 
         return (scopes, catalogs);
     }
 
-    /// <summary>
-    /// Scope + katalog sözlüğünden kategori isimleri üretir.
-    /// </summary>
-    public static List<string> BuildCategoryNames(
-        string scopeKey,
-        Dictionary<string, CatalogSnapshot> catalogs)
+    public static List<string> BuildCategoryNames(string scopeKey, Dictionary<string, CatalogSnapshot> catalogs)
     {
-        if (catalogs.Count == 0)
-            return new List<string>();
+        if (catalogs.Count == 0) return new List<string>();
 
-        // "ALL" => tüm provider'lardaki kategoriler
         if (scopeKey == "ALL")
         {
             return catalogs.Values
@@ -73,13 +81,8 @@ public sealed class LiveTvService
                 .ToList();
         }
 
-        // Belirli provider scope’u
-        if (!catalogs.TryGetValue(scopeKey, out var catalog) ||
-            catalog.Categories is null ||
-            catalog.Categories.Count == 0)
-        {
+        if (!catalogs.TryGetValue(scopeKey, out var catalog) || catalog.Categories is null || catalog.Categories.Count == 0)
             return new List<string>();
-        }
 
         return catalog.Categories
             .Select(x => x.Name)
@@ -88,19 +91,10 @@ public sealed class LiveTvService
             .ToList();
     }
 
-    /// <summary>
-    /// Scope + kategori bilgisine göre canlı kanal listesini döner.
-    /// </summary>
-    public static List<LiveChannel> BuildChannels(
-        string scopeKey,
-        string categoryName,
-        Dictionary<string, CatalogSnapshot> catalogs)
+    public static List<LiveChannel> BuildChannels(string scopeKey, string categoryName, Dictionary<string, CatalogSnapshot> catalogs)
     {
-        if (catalogs.Count == 0 ||
-            string.IsNullOrWhiteSpace(categoryName))
-        {
+        if (catalogs.Count == 0 || string.IsNullOrWhiteSpace(categoryName))
             return new List<LiveChannel>();
-        }
 
         IEnumerable<LiveChannel> all;
 
@@ -108,8 +102,7 @@ public sealed class LiveTvService
         {
             all = catalogs.Values.SelectMany(c => c.Channels);
         }
-        else if (catalogs.TryGetValue(scopeKey, out var catalog) &&
-                 catalog.Channels is not null)
+        else if (catalogs.TryGetValue(scopeKey, out var catalog) && catalog.Channels is not null)
         {
             all = catalog.Channels;
         }
@@ -119,10 +112,7 @@ public sealed class LiveTvService
         }
 
         return all
-            .Where(ch =>
-                ch.CategoryName.Equals(
-                    categoryName,
-                    StringComparison.OrdinalIgnoreCase))
+            .Where(ch => ch.CategoryName.Equals(categoryName, StringComparison.OrdinalIgnoreCase))
             .OrderBy(ch => ch.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }

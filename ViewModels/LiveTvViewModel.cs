@@ -3,8 +3,10 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Threading;
 using AtlasHub.Localization;
 using AtlasHub.Models;
 using AtlasHub.Services;
@@ -24,9 +26,17 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
     private readonly LiveEpgTickerService _ticker;
     private readonly AppEventBus _bus;
 
-    // Katalog ve EPG cache
+    private readonly SemaphoreSlim _refreshGate = new(1, 1);
+    private Task? _initialLoadTask;
+
     private Dictionary<string, CatalogSnapshot> _catalogs = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, EpgSnapshot?> _epgCache = new(StringComparer.OrdinalIgnoreCase);
+
+    private CancellationTokenSource? _channelsCts;
+    private CancellationTokenSource? _nowNextCts;
+
+    private bool _suppressScopeChanged;
+    private bool _suppressCategoryChanged;
 
     public ObservableCollection<ProviderScope> Scopes { get; } = new();
     public ObservableCollection<string> Categories { get; } = new();
@@ -111,8 +121,12 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
         _bus.ProvidersChanged += OnProvidersChanged;
         _ticker.Tick += OnTickerTick;
 
-        _ = RefreshAsync();
+        // ❗Startup freeze azaltmak için: ctor'da Refresh çağırmıyoruz.
     }
+
+    /// <summary>Shell açıldıktan sonra LiveTV yükünü başlatmak için (idempotent).</summary>
+    public Task EnsureLoadedAsync()
+        => _initialLoadTask ??= RefreshAsync();
 
     [RelayCommand]
     private async Task RefreshAsync()
@@ -123,36 +137,64 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
             return;
         }
 
+        await _refreshGate.WaitAsync().ConfigureAwait(false);
         try
         {
-            IsBusy = true;
-            StatusText = Loc.Svc["LiveTv.Status.Loading"];
+            await OnUIAsync(() =>
+            {
+                IsBusy = true;
+                StatusText = Loc.Svc["LiveTv.Status.Loading"];
+            }).ConfigureAwait(false);
 
-            var (scopes, catalogs) = await _liveTv.LoadForProfileAsync(_state.CurrentProfile.Id);
+            var (scopes, catalogs) = await _liveTv.LoadForProfileAsync(_state.CurrentProfile.Id).ConfigureAwait(false);
 
             _catalogs = catalogs;
             _epgCache.Clear();
 
-            Scopes.Clear();
-            foreach (var s in scopes) Scopes.Add(s);
+            await OnUIAsync(() =>
+            {
+                Scopes.Clear();
+                foreach (var s in scopes) Scopes.Add(s);
 
-            SelectedScope = Scopes.FirstOrDefault();
+                _suppressScopeChanged = true;
+                SelectedScope = Scopes.FirstOrDefault();
+                _suppressScopeChanged = false;
 
-            StatusText =
-                Scopes.Count == 0
-                    ? Loc.Svc["LiveTv.Status.NoActiveSource"]
-                    : Loc.Svc["LiveTv.Status.Ready"];
+                BuildCategories(autoSelectFirst: false);
+
+                StatusText =
+                    Scopes.Count == 0
+                        ? Loc.Svc["LiveTv.Status.NoActiveSource"]
+                        : Loc.Svc["LiveTv.Status.Ready"];
+            }).ConfigureAwait(false);
+
+            // UI çizildikten sonra ilk kategori seçimi + channel build (fire & forget ama _= ile CS4014 yok)
+            Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (SelectedScope is null) return;
+                if (Categories.Count == 0) return;
+
+                _suppressCategoryChanged = true;
+                SelectedCategory = Categories.FirstOrDefault();
+                _suppressCategoryChanged = false;
+
+                _ = BuildChannelsAsync();
+            }), DispatcherPriority.ApplicationIdle);
         }
         catch (Exception ex)
         {
-            StatusText = string.Format(
-                CultureInfo.CurrentCulture,
-                Loc.Svc["LiveTv.Status.LoadErrorPrefix"],
-                ex.Message);
+            await OnUIAsync(() =>
+            {
+                StatusText = string.Format(
+                    CultureInfo.CurrentCulture,
+                    Loc.Svc["LiveTv.Status.LoadErrorPrefix"],
+                    ex.Message);
+            }).ConfigureAwait(false);
         }
         finally
         {
-            IsBusy = false;
+            await OnUIAsync(() => IsBusy = false).ConfigureAwait(false);
+            _refreshGate.Release();
         }
     }
 
@@ -175,37 +217,22 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(SelectedProgramRemainingText));
     }
 
-    partial void OnSelectedScopeChanged(ProviderScope? value) => BuildCategories();
+    partial void OnSelectedScopeChanged(ProviderScope? value)
+    {
+        if (_suppressScopeChanged) return;
+        BuildCategories(autoSelectFirst: true);
+    }
 
     partial void OnSelectedCategoryChanged(string? value)
     {
-        BuildChannels();
-        _ = PopulateNowNextForChannelsAsync();
+        if (_suppressCategoryChanged) return;
+        _ = BuildChannelsAsync(); // fire & forget bilinçli
     }
 
     partial void OnSelectedChannelChanged(LiveChannelItemVm? value)
         => _ = OnSelectedChannelChangedAsync(value);
 
-    private async Task OnSelectedChannelChangedAsync(LiveChannelItemVm? value)
-    {
-        if (value is null)
-        {
-            Timeline.Clear();
-            SelectedTimelineItem = null;
-            SelectedProgramProgress = 0;
-            _ticker.Stop();
-            OnPropertyChanged(nameof(HasSelectedProgram));
-            return;
-        }
-
-        try { _player.Play(value.StreamUrl); } catch { }
-
-        await LoadTimelineForChannelAsync(value);
-
-        _ticker.Start();
-    }
-
-    private void BuildCategories()
+    private void BuildCategories(bool autoSelectFirst)
     {
         Categories.Clear();
         Channels.Clear();
@@ -221,73 +248,204 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
         var names = LiveTvService.BuildCategoryNames(SelectedScope.Key, _catalogs);
         foreach (var n in names) Categories.Add(n);
 
-        SelectedCategory = Categories.FirstOrDefault();
+        if (!autoSelectFirst) return;
+
+        Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (SelectedScope is null) return;
+            if (Categories.Count == 0) return;
+            SelectedCategory = Categories.FirstOrDefault();
+        }), DispatcherPriority.Background);
     }
 
-    private void BuildChannels()
+    private async Task BuildChannelsAsync()
     {
-        Channels.Clear();
-        Timeline.Clear();
+        _channelsCts?.Cancel();
+        _channelsCts?.Dispose();
+        _channelsCts = new CancellationTokenSource();
+        var ct = _channelsCts.Token;
 
-        SelectedChannel = null;
-        SelectedTimelineItem = null;
-        SelectedProgramProgress = 0;
+        var scopeKey = SelectedScope?.Key;
+        var category = SelectedCategory;
 
-        if (SelectedScope is null || string.IsNullOrWhiteSpace(SelectedCategory))
+        await OnUIAsync(() =>
+        {
+            Channels.Clear();
+            Timeline.Clear();
+
+            SelectedChannel = null;
+            SelectedTimelineItem = null;
+            SelectedProgramProgress = 0;
+        }).ConfigureAwait(false);
+
+        if (string.IsNullOrWhiteSpace(scopeKey) || string.IsNullOrWhiteSpace(category))
             return;
 
-        var channels = LiveTvService.BuildChannels(SelectedScope.Key, SelectedCategory!, _catalogs);
-        foreach (var ch in channels)
-            Channels.Add(new LiveChannelItemVm(ch, _logos));
+        List<LiveChannel> channels;
+        try
+        {
+            channels = await Task.Run(() =>
+            {
+                ct.ThrowIfCancellationRequested();
+                return LiveTvService.BuildChannels(scopeKey!, category!, _catalogs);
+            }, ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
 
-        SelectedChannel = Channels.FirstOrDefault();
+        const int batchSize = 200;
+
+        for (int i = 0; i < channels.Count; i += batchSize)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var batch = channels.Skip(i).Take(batchSize).ToList();
+
+            await OnUIAsync(() =>
+            {
+                foreach (var ch in batch)
+                    Channels.Add(new LiveChannelItemVm(ch, _logos));
+            }, DispatcherPriority.Background).ConfigureAwait(false);
+
+            // ✅ CS0176 fix: Dispatcher.Yield yerine UI dispatcher'a "boş iş" post edip await ediyoruz.
+            // Bu hem compile eder hem de UI'nın mesaj kuyruğunu işlemesine izin verir.
+            await UiYieldAsync(DispatcherPriority.Background, ct).ConfigureAwait(false);
+        }
+
+        Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (ct.IsCancellationRequested) return;
+            if (SelectedScope?.Key != scopeKey) return;
+            if (!string.Equals(SelectedCategory, category, StringComparison.OrdinalIgnoreCase)) return;
+
+            SelectedChannel = Channels.FirstOrDefault();
+        }), DispatcherPriority.ApplicationIdle);
+
+        _ = PopulateNowNextForChannelsAsync(ct);
     }
 
-    private async Task PopulateNowNextForChannelsAsync()
+    private async Task PopulateNowNextForChannelsAsync(CancellationToken ct)
     {
-        if (Channels.Count == 0) return;
+        _nowNextCts?.Cancel();
+        _nowNextCts?.Dispose();
+        _nowNextCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var token = _nowNextCts.Token;
+
+        List<LiveChannelItemVm> vmSnapshot =
+            await Application.Current.Dispatcher.InvokeAsync(() => Channels.ToList()).Task.ConfigureAwait(false);
+
+        if (vmSnapshot.Count == 0) return;
+
+        const int firstBatchCount = 250;
+        await ComputeAndApplyNowNextAsync(vmSnapshot.Take(firstBatchCount).ToList(), token).ConfigureAwait(false);
+
+        if (vmSnapshot.Count > firstBatchCount)
+        {
+            var rest = vmSnapshot.Skip(firstBatchCount).ToList();
+            const int batchSize = 250;
+
+            for (int i = 0; i < rest.Count; i += batchSize)
+            {
+                token.ThrowIfCancellationRequested();
+                var batch = rest.Skip(i).Take(batchSize).ToList();
+
+                await ComputeAndApplyNowNextAsync(batch, token).ConfigureAwait(false);
+                await Task.Delay(1, token).ConfigureAwait(false);
+            }
+        }
+    }
+
+    private async Task ComputeAndApplyNowNextAsync(List<LiveChannelItemVm> items, CancellationToken ct)
+    {
+        if (items.Count == 0) return;
+
+        var providerIds = items
+            .Select(x => x.Channel.ProviderId)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        foreach (var pid in providerIds)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            if (_epgCache.ContainsKey(pid)) continue;
+            var snap = await _epgRepo.LoadAsync(pid).ConfigureAwait(false);
+            _epgCache[pid] = snap;
+        }
 
         var nowUtc = DateTimeOffset.UtcNow;
 
-        foreach (var chVm in Channels)
+        var results = await Task.Run(() =>
         {
-            var providerId = chVm.Channel.ProviderId;
-            if (string.IsNullOrWhiteSpace(providerId)) continue;
+            ct.ThrowIfCancellationRequested();
+            var arr = new (EpgProgram? now, EpgProgram? next)[items.Count];
 
-            if (!_epgCache.TryGetValue(providerId, out var snap))
+            for (int i = 0; i < items.Count; i++)
             {
-                snap = await _epgRepo.LoadAsync(providerId);
-                _epgCache[providerId] = snap;
+                ct.ThrowIfCancellationRequested();
+
+                var chVm = items[i];
+                var pid = chVm.Channel.ProviderId;
+
+                if (string.IsNullOrWhiteSpace(pid) ||
+                    !_epgCache.TryGetValue(pid, out var snap) ||
+                    snap is null)
+                {
+                    arr[i] = (null, null);
+                    continue;
+                }
+
+                arr[i] = _epg.GetNowNext(snap, chVm.Channel, nowUtc);
             }
+
+            return arr;
+        }, ct).ConfigureAwait(false);
+
+        await OnUIAsync(() =>
+        {
+            for (int i = 0; i < items.Count; i++)
+                items[i].UpdateNowNext(results[i].now, results[i].next);
+        }, DispatcherPriority.Background).ConfigureAwait(false);
+    }
+
+    private async Task OnSelectedChannelChangedAsync(LiveChannelItemVm? value)
+    {
+        if (value is null)
+        {
+            await OnUIAsync(() =>
+            {
+                Timeline.Clear();
+                SelectedTimelineItem = null;
+                SelectedProgramProgress = 0;
+                OnPropertyChanged(nameof(HasSelectedProgram));
+            }).ConfigureAwait(false);
+
+            _ticker.Stop();
+            return;
         }
 
-        foreach (var chVm in Channels)
-        {
-            var providerId = chVm.Channel.ProviderId;
+        try { _player.Play(value.StreamUrl); } catch { /* ignore */ }
 
-            if (string.IsNullOrWhiteSpace(providerId) ||
-                !_epgCache.TryGetValue(providerId, out var snap) ||
-                snap is null)
-            {
-                chVm.UpdateNowNext(null, null);
-                continue;
-            }
-
-            var (now, next) = _epg.GetNowNext(snap, chVm.Channel, nowUtc);
-            chVm.UpdateNowNext(now, next);
-        }
+        await LoadTimelineForChannelAsync(value).ConfigureAwait(false);
+        _ticker.Start();
     }
 
     private async Task LoadTimelineForChannelAsync(LiveChannelItemVm channelVm)
     {
-        Timeline.Clear();
-        SelectedTimelineItem = null;
-        SelectedProgramProgress = 0;
+        await OnUIAsync(() =>
+        {
+            Timeline.Clear();
+            SelectedTimelineItem = null;
+            SelectedProgramProgress = 0;
+        }).ConfigureAwait(false);
 
         var providerId = channelVm.Channel.ProviderId;
         if (string.IsNullOrWhiteSpace(providerId))
         {
-            OnPropertyChanged(nameof(HasSelectedProgram));
+            await OnUIAsync(() => OnPropertyChanged(nameof(HasSelectedProgram))).ConfigureAwait(false);
             return;
         }
 
@@ -295,13 +453,13 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
         {
             if (!_epgCache.TryGetValue(providerId, out var epgSnap))
             {
-                epgSnap = await _epgRepo.LoadAsync(providerId);
+                epgSnap = await _epgRepo.LoadAsync(providerId).ConfigureAwait(false);
                 _epgCache[providerId] = epgSnap;
             }
 
             if (epgSnap is null)
             {
-                OnPropertyChanged(nameof(HasSelectedProgram));
+                await OnUIAsync(() => OnPropertyChanged(nameof(HasSelectedProgram))).ConfigureAwait(false);
                 return;
             }
 
@@ -317,37 +475,43 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
             var items = DeduplicateTimelineItems(rawItems);
             if (items.Count == 0)
             {
-                OnPropertyChanged(nameof(HasSelectedProgram));
+                await OnUIAsync(() => OnPropertyChanged(nameof(HasSelectedProgram))).ConfigureAwait(false);
                 return;
             }
 
             var nowLocal = DateTimeOffset.Now;
 
-            foreach (var (program, isNow, progressInt) in items)
+            await OnUIAsync(() =>
             {
-                var vm = new EpgTimelineItemVm(program)
+                foreach (var (program, isNow, progressInt) in items)
                 {
-                    IsNow = isNow,
-                    Progress = progressInt,
-                    IsSelected = false
-                };
+                    var vm = new EpgTimelineItemVm(program)
+                    {
+                        IsNow = isNow,
+                        Progress = progressInt,
+                        IsSelected = false
+                    };
 
-                vm.IsNow = vm.IsNowAt(nowLocal);
-                vm.Progress = vm.IsNow ? vm.GetProgressPercent(nowLocal) : vm.Progress;
+                    vm.IsNow = vm.IsNowAt(nowLocal);
+                    vm.Progress = vm.IsNow ? vm.GetProgressPercent(nowLocal) : vm.Progress;
 
-                Timeline.Add(vm);
-            }
+                    Timeline.Add(vm);
+                }
 
-            var nowItem = Timeline.FirstOrDefault(x => x.IsNow) ?? Timeline.FirstOrDefault();
-            if (nowItem is not null)
-                SelectTimelineItem(nowItem);
+                var nowItem = Timeline.FirstOrDefault(x => x.IsNow) ?? Timeline.FirstOrDefault();
+                if (nowItem is not null)
+                    SelectTimelineItem(nowItem);
+            }).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            StatusText = string.Format(
-                CultureInfo.CurrentCulture,
-                Loc.Svc["LiveTv.Status.EpgErrorPrefix"],
-                ex.Message);
+            await OnUIAsync(() =>
+            {
+                StatusText = string.Format(
+                    CultureInfo.CurrentCulture,
+                    Loc.Svc["LiveTv.Status.EpgErrorPrefix"],
+                    ex.Message);
+            }).ConfigureAwait(false);
         }
     }
 
@@ -390,10 +554,6 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
 
         return s.ToUpperInvariant();
     }
-
-    // -----------------------
-    // Thread-safe event handlers
-    // -----------------------
 
     private void OnProvidersChanged(object? sender, EventArgs e)
     {
@@ -451,10 +611,42 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
         }
     }
 
+    private static Task OnUIAsync(Action action, DispatcherPriority priority = DispatcherPriority.DataBind)
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null || dispatcher.CheckAccess())
+        {
+            action();
+            return Task.CompletedTask;
+        }
+
+        return dispatcher.InvokeAsync(action, priority).Task;
+    }
+
+    private static Task UiYieldAsync(DispatcherPriority priority, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null)
+            return Task.Delay(1, ct);
+
+        // UI kuyruğuna düşük öncelikte bir "no-op" bırakıp await etmek: UI'nın nefes almasını sağlar.
+        return dispatcher.InvokeAsync(static () => { }, priority).Task;
+    }
+
     public void Dispose()
     {
+        _channelsCts?.Cancel();
+        _channelsCts?.Dispose();
+
+        _nowNextCts?.Cancel();
+        _nowNextCts?.Dispose();
+
         _bus.ProvidersChanged -= OnProvidersChanged;
         _ticker.Tick -= OnTickerTick;
         _ticker.Stop();
+
+        _refreshGate.Dispose();
     }
 }
