@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Windows;
 using AtlasHub.Localization;
 using AtlasHub.Models;
 using AtlasHub.Services;
@@ -36,10 +37,10 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
     [ObservableProperty] private string? _selectedCategory;
     [ObservableProperty] private LiveChannelItemVm? _selectedChannel;
     [ObservableProperty] private EpgTimelineItemVm? _selectedTimelineItem;
+
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private string _statusText = string.Empty;
 
-    // Progress bar için writable property (TwoWay binding’e toleranslı)
     private double _selectedProgramProgress;
     public double SelectedProgramProgress
     {
@@ -48,7 +49,6 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
     }
 
     public bool HasSelectedProgram => SelectedTimelineItem is not null;
-
     public string SelectedProgramTitle => SelectedTimelineItem?.Title ?? string.Empty;
 
     public string SelectedProgramTimeRange =>
@@ -71,8 +71,7 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
             if (p is null) return string.Empty;
 
             var remaining = p.EndUtc - DateTimeOffset.UtcNow;
-            if (remaining <= TimeSpan.Zero)
-                return Loc.Svc["LiveTv.Program.RemainingEnded"];
+            if (remaining <= TimeSpan.Zero) return Loc.Svc["LiveTv.Program.RemainingEnded"];
 
             if (remaining.TotalHours >= 1)
             {
@@ -115,10 +114,6 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
         _ = RefreshAsync();
     }
 
-    // -----------------------
-    // Commands
-    // -----------------------
-
     [RelayCommand]
     private async Task RefreshAsync()
     {
@@ -134,18 +129,19 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
             StatusText = Loc.Svc["LiveTv.Status.Loading"];
 
             var (scopes, catalogs) = await _liveTv.LoadForProfileAsync(_state.CurrentProfile.Id);
+
             _catalogs = catalogs;
             _epgCache.Clear();
 
             Scopes.Clear();
-            foreach (var s in scopes)
-                Scopes.Add(s);
+            foreach (var s in scopes) Scopes.Add(s);
 
             SelectedScope = Scopes.FirstOrDefault();
 
-            StatusText = Scopes.Count == 0
-                ? Loc.Svc["LiveTv.Status.NoActiveSource"]
-                : Loc.Svc["LiveTv.Status.Ready"];
+            StatusText =
+                Scopes.Count == 0
+                    ? Loc.Svc["LiveTv.Status.NoActiveSource"]
+                    : Loc.Svc["LiveTv.Status.Ready"];
         }
         catch (Exception ex)
         {
@@ -179,10 +175,6 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(SelectedProgramRemainingText));
     }
 
-    // -----------------------
-    // Selection change hooks
-    // -----------------------
-
     partial void OnSelectedScopeChanged(ProviderScope? value) => BuildCategories();
 
     partial void OnSelectedCategoryChanged(string? value)
@@ -196,7 +188,6 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
 
     private async Task OnSelectedChannelChangedAsync(LiveChannelItemVm? value)
     {
-        // value = snapshot; SelectedChannel property ileride değişse de bu local değişmez
         if (value is null)
         {
             Timeline.Clear();
@@ -207,22 +198,12 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
             return;
         }
 
-        try
-        {
-            _player.Play(value.StreamUrl);
-        }
-        catch
-        {
-            // native player bazen exception atabilir; UI kilitlenmesin
-        }
+        try { _player.Play(value.StreamUrl); } catch { }
 
         await LoadTimelineForChannelAsync(value);
+
         _ticker.Start();
     }
-
-    // -----------------------
-    // Builders
-    // -----------------------
 
     private void BuildCategories()
     {
@@ -235,15 +216,10 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
         SelectedTimelineItem = null;
         SelectedProgramProgress = 0;
 
-        if (SelectedScope is null)
-            return;
+        if (SelectedScope is null) return;
 
-        var names = LiveTvService.BuildCategoryNames(
-            SelectedScope.Key,
-            _catalogs);
-
-        foreach (var n in names)
-            Categories.Add(n);
+        var names = LiveTvService.BuildCategoryNames(SelectedScope.Key, _catalogs);
+        foreach (var n in names) Categories.Add(n);
 
         SelectedCategory = Categories.FirstOrDefault();
     }
@@ -260,27 +236,19 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
         if (SelectedScope is null || string.IsNullOrWhiteSpace(SelectedCategory))
             return;
 
-        var channels = LiveTvService.BuildChannels(
-            SelectedScope.Key,
-            SelectedCategory!,
-            _catalogs);
-
+        var channels = LiveTvService.BuildChannels(SelectedScope.Key, SelectedCategory!, _catalogs);
         foreach (var ch in channels)
             Channels.Add(new LiveChannelItemVm(ch, _logos));
 
         SelectedChannel = Channels.FirstOrDefault();
     }
 
-    /// <summary>
-    /// Listedeki her kanal için EPG Now/Next bilgisini doldurur.
-    /// </summary>
     private async Task PopulateNowNextForChannelsAsync()
     {
         if (Channels.Count == 0) return;
 
         var nowUtc = DateTimeOffset.UtcNow;
 
-        // İlgili provider'lar için EPG snapshot'larını cache'e alın
         foreach (var chVm in Channels)
         {
             var providerId = chVm.Channel.ProviderId;
@@ -293,10 +261,10 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
             }
         }
 
-        // Şimdi her kanal için Now/Next hesapla
         foreach (var chVm in Channels)
         {
             var providerId = chVm.Channel.ProviderId;
+
             if (string.IsNullOrWhiteSpace(providerId) ||
                 !_epgCache.TryGetValue(providerId, out var snap) ||
                 snap is null)
@@ -310,10 +278,6 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
         }
     }
 
-    /// <summary>
-    /// Seçili (veya parametre olarak gelen) kanal için timeline yükler.
-    /// Lokal snapshot kullanıldığı için SelectedChannel sonradan null olsa da NRE atmaz.
-    /// </summary>
     private async Task LoadTimelineForChannelAsync(LiveChannelItemVm channelVm)
     {
         Timeline.Clear();
@@ -345,7 +309,7 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
 
             var rawItems = _epg.GetTimelineItems(
                 epgSnap,
-                channelVm.Channel, // <- artık SelectedChannel yerine snapshot
+                channelVm.Channel,
                 nowUtc,
                 pastWindow: TimeSpan.FromHours(2),
                 futureWindow: TimeSpan.FromHours(6));
@@ -368,7 +332,6 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
                     IsSelected = false
                 };
 
-                // Local saate göre ekstra güncelle
                 vm.IsNow = vm.IsNowAt(nowLocal);
                 vm.Progress = vm.IsNow ? vm.GetProgressPercent(nowLocal) : vm.Progress;
 
@@ -388,9 +351,6 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
         }
     }
 
-    /// <summary>
-    /// Aynı programı (ChannelId + Start/End + NormalizedTitle) bir kez bırakır.
-    /// </summary>
     private static IReadOnlyList<(EpgProgram program, bool isNow, int progress)> DeduplicateTimelineItems(
         IReadOnlyList<(EpgProgram program, bool isNow, int progress)> items)
     {
@@ -408,9 +368,6 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
 
         foreach (var g in grouped)
         {
-            // Aynı programdan birden fazla varsa:
-            // - Önce "şu an" olanı tercih et
-            // - Sonra başlık uzunluğu küçük olanı (daha sade)
             var chosen = g
                 .OrderByDescending(x => x.isNow)
                 .ThenBy(x => (x.program.Title ?? string.Empty).Length)
@@ -419,7 +376,6 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
             result.Add(chosen);
         }
 
-        // Zaman sırasına göre
         result.Sort((a, b) => a.program.StartUtc.CompareTo(b.program.StartUtc));
         return result;
     }
@@ -429,7 +385,6 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
         if (string.IsNullOrWhiteSpace(title)) return string.Empty;
 
         var s = title.Trim();
-        // basit whitespace collapse
         while (s.Contains("  ", StringComparison.Ordinal))
             s = s.Replace("  ", " ", StringComparison.Ordinal);
 
@@ -437,10 +392,34 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
     }
 
     // -----------------------
-    // Ticker
+    // Thread-safe event handlers
     // -----------------------
 
+    private void OnProvidersChanged(object? sender, EventArgs e)
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null || dispatcher.CheckAccess())
+        {
+            _ = RefreshAsync();
+            return;
+        }
+
+        dispatcher.BeginInvoke(new Action(() => _ = RefreshAsync()));
+    }
+
     private void OnTickerTick()
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null || dispatcher.CheckAccess())
+        {
+            UpdateTickerOnUi();
+            return;
+        }
+
+        dispatcher.BeginInvoke(new Action(UpdateTickerOnUi));
+    }
+
+    private void UpdateTickerOnUi()
     {
         if (SelectedChannel is null) return;
         if (Timeline.Count == 0) return;
@@ -471,9 +450,6 @@ public sealed partial class LiveTvViewModel : ViewModelBase, IDisposable
             OnPropertyChanged(nameof(SelectedProgramRemainingText));
         }
     }
-
-    private void OnProvidersChanged(object? sender, EventArgs e)
-        => _ = RefreshAsync();
 
     public void Dispose()
     {
